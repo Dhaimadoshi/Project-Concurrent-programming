@@ -150,12 +150,12 @@ in
 	     case State
 	     of state(waiting position(x:X y:Y) bag(Food Wood Stone Steel) Team Strenght) then
 		case Msg
-		of move(destination(x:X y:Y)) then
-		   {Send GameMaster movePlayer(position(x:X y:Y) destination(x:X y:Y) Pid Team Strenght)}
+		of move(destination(x:DestX y:DestY)) then
+		   {Send GameMaster movePlayer(position(x:X y:Y) destination(x:DestX y:DestY) Pid Team Strenght)}
 		   {Send Tid starttimer(1000 Pid)}
 		   {ITagDeleter ITag}
-		   {SetBoxImage PlayerImage destination(x:X y:Y) ITag}
-		   state(busy destination(x:X y:Y) bag(Food Wood Stone Steel) Team Strenght)
+		   {SetBoxImage PlayerImage destination(x:DestX y:DestY) ITag}
+		   state(busy destination(x:DestX y:DestY) bag(Food Wood Stone Steel) Team Strenght)
 		[] exploit(Ressource) then
 		   if({BagIsFull bag(Food Wood Stone Steel)}) then
 		      {Send Tid starttimer(1000 Pid)}
@@ -356,8 +356,8 @@ proc {DrawSquareGrid Size}
 end
 
 
-proc {SetBoxImage I Position ITag}
-   {Canvas tk(create image (Position.x)*40+12 (Position.y)*40+12 image:I tags:ITag)}
+proc {SetBoxImage I position(x:X y:Y) ITag}
+   {Canvas tk(create image X*40+12 Y*40+12 image:I tags:ITag)}
 end
 proc {ITagDeleter ITag}
    {ITag delete}
