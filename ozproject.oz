@@ -173,6 +173,12 @@ in
 	%	[] buildTower then
 		[] die then state(dead)
 	%	[] buyWeapon then
+		[] isBagFull(Bool) then
+		   if Bag.1 + Bag.2 + Bag.3 + Bag.4 == 10
+		   then Bool = true
+		   else Bool = false end
+		   State
+		[] whichTeam(T) then T = Team State
 		else State
 		end
 	     [] state(dead) then State           % risque de faire des calcul pour rien
@@ -210,7 +216,7 @@ proc{NewGameMaster ?GMid}
 	  }
 end
 
-proc{NewSquare GameMaster ?Sid}    % à l'issu combat : sent winner to list, list send loser to gameMaster, GameMaster kill them and sent remove from square to list
+proc{NewSquare RessourceType GameMaster ?Sid}    % à l'issu combat : sent winner to list, list send loser to gameMaster, GameMaster kill them and sent remove from square to list
    proc{NewPlayerList ?PLid ?DefaultTeamIds}
       State = {MakeTuple state NUMBER_OF_TEAMS}
    in
@@ -267,28 +273,37 @@ proc{NewSquare GameMaster ?Sid}    % à l'issu combat : sent winner to list, lis
    {NewPlayerList PlayerList DefaultTeamIds}
    DefaultTeamStrenght = {MakeTuple teamStrenght NUMBER_OF_TEAMS} for I in 1..NUMBER_OF_TEAMS do DefaultTeamStrenght.I = 0 end 
 in
-   Sid = {NewStatePortObject state(free DefaultTeamStrenght DefaultTeamIds)  % TeamStrenght = tuple représentant la force de l'équipe sur cette case % team ids = tuple avec les cons
+   Sid = {NewStatePortObject state(free RessourceType DefaultTeamStrenght DefaultTeamIds)  % TeamStrenght = tuple représentant la force de l'équipe sur cette case % team ids = tuple avec les cons
 	  fun{$ State Msg}                                            % TeamIds = tuple contenant 1 tuple par équipe contenant les Ids des players sur la case
 	     case State
-	     of state(free TeamStrenght TeamIds) then
+	     of state(free RessourceType TeamStrenght TeamIds) then
 		case Msg
 		of entering(Pid Team Strenght) then
 		   TeamIdentifys
 		in
 		   {Send PlayerList add(Pid Team TeamIdentifys)}
 		   {Wait TeamIdentifys}
-		   state(free {AddInTuple TeamStrenght Strenght Team teamStrenght} TeamIdentifys)
+		   state(free RessourceType {AddInTuple TeamStrenght Strenght Team teamStrenght} TeamIdentifys)
 		[] exploit(Team) then                              % passe de free à plus free + envoyer tuple
-		    state(exploited Team TeamStrenght TeamIds)
+		    state(exploited RessourceType Team TeamStrenght TeamIds)
 		[] leave(Pid Team Strenght) then
 		   TeamIdentifys
 		in
 		   {Send PlayerList remove(Pid Team TeamIdentifys)}
 		   {Wait TeamIdentifys}
-		   state(free {AddInTuple TeamStrenght (Strenght*~1) Team teamStrenght} TeamIdentifys)   % multiplify by -1 because we want to decrease the strenght
+		   state(free RessourceType {AddInTuple TeamStrenght (Strenght*~1) Team teamStrenght} TeamIdentifys)   % multiplify by -1 because we want to decrease the strenght
+		[] whichRessource(WhichRessource) then
+		   case RessourceType
+		   of nil then WhichRessource = 0
+		   [] food then WhichRessource = 1
+		   [] wood then WhichRessource = 2
+		   [] stone then WhichRessource = 3
+		   else WhichRessource = 4
+		   end
+		   State
 		else State
 		end
-	     [] state(exploited ExploiteByTeam TeamStrenght TeamIds) then
+	     [] state(exploited RessourceType ExploiteByTeam TeamStrenght TeamIds) then
 		case Msg
 		of release() then State                                                  % TODO
 		[]  entering(Pid Team Strenght) then
@@ -296,13 +311,13 @@ in
 		in
 		   {Send PlayerList add(Pid Team TeamIdentifys)}
 		   {Wait TeamIdentifys}
-		    state(free {AddInTuple TeamStrenght Strenght Team teamStrenght} TeamIdentifys)
+		    state(free RessourceType {AddInTuple TeamStrenght Strenght Team teamStrenght} TeamIdentifys)
 		[] leave(Pid Team Strenght) then
 		   TeamIdentifys
 		in
 		   {Send PlayerList remove(Pid Team TeamIdentifys)}
 		   {Wait TeamIdentifys}
-		   state(free {AddInTuple TeamStrenght (Strenght*~1) Team teamStrenght} TeamIdentifys)   % multiplify by -1 because we want to decrease the strenght
+		   state(free RessourceType {AddInTuple TeamStrenght (Strenght*~1) Team teamStrenght} TeamIdentifys)   % multiplify by -1 because we want to decrease the strenght
 		[] exploit(Team) then
 		   if(ExploiteByTeam == Team) then
 		       State
@@ -314,9 +329,18 @@ in
 	%	      {Wait WinnerAck}
 	%	      %{Send GameMaster TeamsToBeKilled}
 		   end
+		[] whichRessource(WhichRessource) then
+		   case RessourceType
+		   of nil then WhichRessource = 0
+		   [] food then WhichRessource = 1
+		   [] wood then WhichRessource = 2
+		   [] stone then WhichRessource = 3
+		   else WhichRessource = 4
+		   end
+		   State
 		else
 		 %  {Browse 'error newsquare msg'}
-		   nil
+		   State
 		end
 	     else
 		% {Browse 'new square state error'}
@@ -337,15 +361,21 @@ proc{NewBrain Pid ?Bid}
 	  proc{$ Msg}
 	     case Msg
 	     of nextOrder then
-		{Send Pid move(destination(x:5 y:5))}
-		%if sac plein then
-		%   move home
-		%else
-		%   if on ressource then
-		%      exploit
-		%   else move vers ressource
-		%   end
-		%end
+		IsBagFull in
+		{Send Pid isBagFull(IsBagFull)}
+		if IsBagFull then
+		   Team in
+		   {Send Pid whichTeam(Team)}
+		   {Send Pid move(HOME_LOCATION.Team)}
+		else
+		   WhichRessource Position in
+		   {Send Pid whichPosition(Position)}
+		   {Send SquareBoard.(Position.x).(Position.y) whichRessource(WhichRessource)}
+		   if WhichRessource == nil then
+		      skip% move vers ressource
+		   else {Send Pid exploit(WhichRessource)}
+		   end
+		end
 	     end
 	  end
 	 }
@@ -394,6 +424,7 @@ Window={QTk.build td(Toolbar Grid ScoreBoard)}
    % Display the window
 
 {Window show}
+
 
 GMid
 thread {NewGameMaster GMid} end
