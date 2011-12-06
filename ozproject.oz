@@ -131,6 +131,8 @@ proc{NewPlayer GameMaster Team ?Pid}
    STRENGHT_DEFAULT = 1            % 1 = no weapon, 3 = weapon equiped
    Tid = {Timer}
    ITag = {Canvas newTag($)}
+
+   Bid = {NewBrain Pid}
    
    fun{BagIsFull Bag}
       Boolean
@@ -141,6 +143,7 @@ proc{NewPlayer GameMaster Team ?Pid}
 in
    {SetBoxImage PlayerImage HOME_LOCATION.Team ITag}
    {Delay 1000}
+   
    Pid = {NewStatePortObject state(waiting
 				   HOME_LOCATION.Team
 				   EMPTY_BAG
@@ -176,13 +179,16 @@ in
 		    % revive
 	     [] state(busy Position Bag Team Strenght) then
 		case Msg
-		of stoptimer then state(waiting Position Bag Team Strenght)
+		of stoptimer then
+		   {Send Bid nextOrder}
+		   state(waiting Position Bag Team Strenght)
 		[] die then state(dead)
 		else State
 		end 
 	     end
 	  end
 	 }
+   {Send Bid nextOrder}
 end
 
 proc{NewGameMaster ?GMid}
@@ -325,17 +331,25 @@ end
 *
 **/
 
-%proc{NewBrain ?Bid}
- %  DefaultState = state()
-%in
- %  Bid = {NewStatePortObject DefaultState
-%	  fun{$ State Msg}
-%	     case State of
-%		case Msg of
-%	     end
-%	  end
-%end
-
+proc{NewBrain Pid ?Bid}
+   
+   Bid = {NewPortObject
+	  proc{$ Msg}
+	     case Msg
+	     of nextOrder then
+		{Send Pid move(destination(x:5 y:5))}
+		%if sac plein then
+		%   move home
+		%else
+		%   if on ressource then
+		%      exploit
+		%   else move vers ressource
+		%   end
+		%end
+	     end
+	  end
+	 }
+end
 
 /*******
 ** Interface
@@ -385,7 +399,7 @@ GMid
 thread {NewGameMaster GMid} end
 X1 X2 X3
 thread {NewPlayer GMid 1 X1} end
-
+/*
 thread {NewPlayer GMid 1 X2} end
 
 thread {NewPlayer GMid 1 X3} end
@@ -400,5 +414,5 @@ end
 thread {Send X3 move(position(x:3 y:0))}
        {Delay 1000}
 end
-
+*/
 end
