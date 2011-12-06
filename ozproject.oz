@@ -9,7 +9,7 @@ define
    % Default Arguments
    SquareBoard
    NUMBER_OF_TEAMS = 2
-   HOME_LOCATION = homes(position(x:0 y:0))
+   HOME_LOCATION = homes(home1(x:0 y:0))
    HEIGHT   = 16*40+1
    WIDTH    = HEIGHT
    
@@ -148,24 +148,24 @@ in
 				   STRENGHT_DEFAULT)
 	  fun{$ State Msg}
 	     case State
-	     of state(waiting position(x:X y:Y) bag(Food Wood Stone Steel) Team Strenght) then
+	     of state(waiting Position Bag Team Strenght) then
 		case Msg
-		of move(destination(x:DestX y:DestY)) then
-		   {Send GameMaster movePlayer(position(x:X y:Y) destination(x:DestX y:DestY) Pid Team Strenght)}
+		of move(Destination) then
+		   {Send GameMaster movePlayer(Position Destination Pid Team Strenght)}
 		   {Send Tid starttimer(1000 Pid)}
 		   {ITagDeleter ITag}
-		   {SetBoxImage PlayerImage destination(x:DestX y:DestY) ITag}
-		   state(busy destination(x:DestX y:DestY) bag(Food Wood Stone Steel) Team Strenght)
-		[] exploit(Ressource) then
-		   if({BagIsFull bag(Food Wood Stone Steel)}) then
+		   {SetBoxImage PlayerImage Destination ITag}
+		   state(busy Destination Bag Team Strenght)
+		[] exploit(Ressource) then     % ressource = tuple (0 0 0 0)
+		   if({BagIsFull Bag}) then
 		      {Send Tid starttimer(1000 Pid)}
-		      state(busy position(x:X y:Y) bag(Food Wood Stone Steel) Team Strenght)              % si exploite alors que sac full > perte de temps, c'est à brain de figure it out
+		      state(busy Position Bag Team Strenght)              % si exploite alors que sac full > perte de temps, c'est à brain de figure it out
 		   else
 		      Amount = 1                                         % exploit = always 1 by 1, not hard coded
 		   in
-		      {Send SquareBoard.x.y exploit(Team)}    % changer square en etat exploited
+		      {Send SquareBoard.(Position.x).(Position.y) exploit(Team)}    % changer square en etat exploited
 		      {Send Tid starttimer(1000 Pid)}
-		      state(busy position(x:X y:Y) {AddInTuple bag(Food Wood Stone Steel) Amount Ressource bag} Strenght)
+		      state(busy Position {AddInTuple Bag Amount Ressource bag} Strenght)
 		   end
 	%	[] buildTower then
 		[] die then state(dead)
@@ -174,9 +174,9 @@ in
 		end
 	     [] state(dead) then State           % risque de faire des calcul pour rien
 		    % revive
-	     [] state(busy position(x:X y:Y) bag(Food Wood Stone Steel) Team Strenght) then
+	     [] state(busy Position Bag Team Strenght) then
 		case Msg
-		of stoptimer then state(waiting position(x:X y:Y) bag(Food Wood Stone Steel) Team Strenght)
+		of stoptimer then state(waiting Position Bag Team Strenght)
 		[] die then state(dead)
 		else State
 		end 
@@ -191,13 +191,13 @@ proc{NewGameMaster ?GMid}
 	      case Msg
 	      of makePlayer(Team Pid) then {NewPlayer GMid Team Pid}                    % TODO : Add brain
 	    %  [] MakeTower then
-	      [] movePlayer(position(x:PosX y:PosY) destination(x:DestX y:DestY) Pid Team Strenght) then
-		 {Send SquareBoard.PosX.PosY leave(Pid Team Strenght)}
-		 {Send SquareBoard.DestX.DestY entering(Pid Team Strenght)}
+	      [] movePlayer(From Dest Pid Team Strenght) then
+		 {Send SquareBoard.(From.x).(From.y) leave(Pid Team Strenght)}
+		 {Send SquareBoard.(Dest.x).(Dest.y) entering(Pid Team Strenght)}
 		 % envoyer message au gérant des graphics 
-	      %[] battle(TeamStrenght Sid) then
+	      [] battle(TeamStrenght Sid) then
 		 %calcul qui gagne
-		% {Send Sid battleResult(winner)}                                              %TODO
+		 {Send Sid battleResult(winner)}                                              %TODO
 	      else skip% {Browse 'new Game Master msg error'}
 	      end
 	   end
@@ -248,8 +248,8 @@ proc{NewSquare GameMaster ?Sid}    % à l'issu combat : sent winner to list, lis
 		    end
 		    TeamIdentifys = NewState
 		    NewState
-		% else
-		 % State % {Browse 'error on newSquare add'}
+		 else
+		  State % {Browse 'error on newSquare add'}
 		 end
 	      end
 	     }
@@ -324,20 +324,18 @@ end
 ** Brain functions
 *
 **/
-/*
-proc{NewBrain ?Bid}
-   DefaultState = state()
-in
-   Bid = {NewStatePortObject DefaultState
-	  fun{$ State Msg}
-	     case State of
-		case Msg of
-		end
-	     end
-	  end
-	 }
-end
-*/
+
+%proc{NewBrain ?Bid}
+ %  DefaultState = state()
+%in
+ %  Bid = {NewStatePortObject DefaultState
+%	  fun{$ State Msg}
+%	     case State of
+%		case Msg of
+%	     end
+%	  end
+%end
+
 
 /*******
 ** Interface
@@ -356,8 +354,8 @@ proc {DrawSquareGrid Size}
 end
 
 
-proc {SetBoxImage I position(x:X y:Y) ITag}
-   {Canvas tk(create image X*40+12 Y*40+12 image:I tags:ITag)}
+proc {SetBoxImage I Position ITag}
+   {Canvas tk(create image (Position.x)*40+12 (Position.y)*40+12 image:I tags:ITag)}
 end
 proc {ITagDeleter ITag}
    {ITag delete}
