@@ -236,7 +236,7 @@ proc{NewSquare RessourceType GameMaster ?Sid}    % à l'issu combat : sent winne
       for I in 1..NUMBER_OF_TEAMS do State.I = nil end     % initialise le State à nil car aucun joueur n'est présent sur la case.
       
       PLid = {NewStatePortObject State
-	      fun{$ State Msg}{Browser.browse list} {Browser.browse State}{Browser.browse Msg}{Delay 15000}
+	      fun{$ State Msg}{Browser.browse list} {Browser.browse State}{Browser.browse Msg}{Delay 1000}
 		 case Msg
 		 of remove(Pid Team TeamIdentifys) then
 		    NewState = {MakeTuple state NUMBER_OF_TEAMS}
