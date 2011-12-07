@@ -140,7 +140,7 @@ proc{NewPlayer Bid GameMaster Team ?Pid}
    fun{BagIsFull Bag}
       Boolean
    in
-      Boolean = 1 == Bag.1 + Bag.2 + Bag.3 + Bag.4
+      Boolean = 10 == Bag.1 + Bag.2 + Bag.3 + Bag.4
       Boolean
    end
 in
@@ -154,7 +154,7 @@ in
 				   Team
 				   STRENGHT_DEFAULT)
 	  
-	  fun{$ State Msg}%{Browser.browse player}{Browser.browse State} {Browser.browse Msg} {Delay 1000}
+	  fun{$ State Msg}
 	     case State
 	     of state(waiting Position Bag Team Strenght) then
 		case Msg
@@ -186,7 +186,7 @@ in
 		   State
 		[] whichTeam(?T) then T = Team State
 		[] whichPosition(?Pos) then Pos = Position State
-		else {Browser.browse coucou} State
+		else {Browser.browse "Player State waiting message error"} State
 		end
 	     [] state(dead) then State           % risque de faire des calcul pour rien
 		    % revive
@@ -211,34 +211,32 @@ proc{NewGameMaster ?GMid}
 	      case Msg
 	      of makePlayer(Team Pid) then
 		 Bid = {NewBrain Pid} in 
-		 {NewPlayer Bid GMid Team Pid}                    % TODO : Add brain
+		 {NewPlayer Bid GMid Team Pid}                    % TODO : Add to brain making players
 	    %  [] MakeTower then
 	      [] movePlayer(From Dest Pid Team Strenght) then
-		 {Browser.browse From}
 		 {Delay 10000}
 		 {Send SquareBoard.(From.x).(From.y) leave(Pid Team Strenght)}
 		 {Send SquareBoard.(Dest.x).(Dest.y) entering(Pid Team Strenght)}
-		 {Browser.browse 'new Game Master msg error'} {Delay 2500}
 % envoyer message au gérant des graphics 
 	      [] battle(TeamStrenght Sid) then
 		 %calcul qui gagne
 		 {Send Sid battleResult(winner)}                                              %TODO
-	      else {Browser.browse 'new Game Master msg error'} {Browser.browse Msg} {Delay 10000}
+	      else {Browser.browse 'new Game Master msg error :'} {Browser.browse Msg} {Delay 10000}
 	      end
 	   end
 	  }
 end
 
-proc{NewSquare RessourceType GameMaster ?Sid}    % à l'issu combat : sent winner to list, list send loser to gameMaster, GameMaster kill them and sent remove from square to list
+proc{NewSquare RessourceTypeInitialiaser GameMaster ?Sid}    % à l'issu combat : sent winner to list, list send loser to gameMaster, GameMaster kill them and sent remove from square to list
    proc{NewPlayerList ?PLid ?DefaultTeamIds}
       State = {MakeTuple state NUMBER_OF_TEAMS}
    in
       for I in 1..NUMBER_OF_TEAMS do State.I = nil end     % initialise le State à nil car aucun joueur n'est présent sur la case.
       
-      PLid = {NewStatePortObject State
-	      fun{$ State Msg}{Browser.browse list} {Browser.browse State}{Browser.browse Msg}{Delay 1000}
+      PLid = {NewStatePortObject State                       % State = ListsOfTeamIdentifiers
+	      fun{$ State Msg}
 		 case Msg
-		 of remove(Pid Team TeamIdentifys) then
+		 of remove(Pid Team TeamIdentifiers) then
 		    NewState = {MakeTuple state NUMBER_OF_TEAMS}
 		 in    
 		    for I in 1..NUMBER_OF_TEAMS do
@@ -257,9 +255,9 @@ proc{NewSquare RessourceType GameMaster ?Sid}    % à l'issu combat : sent winne
 			  NewState.I = NewLeft
 		       else NewState.I = State.I end
 		    end
-		    TeamIdentifys = NewState
+		    TeamIdentifiers = NewState
 		    NewState
-		 [] add(Pid Team TeamIdentifys) then     
+		 [] add(Pid Team TeamIdentifiers) then     
 		    NewState = {MakeTuple state NUMBER_OF_TEAMS}
 		 in    
 		    for I in 1..NUMBER_OF_TEAMS do
@@ -271,10 +269,10 @@ proc{NewSquare RessourceType GameMaster ?Sid}    % à l'issu combat : sent winne
 		       else NewState.I = State.I
 		       end
 		    end
-		    TeamIdentifys = NewState
+		    TeamIdentifiers = NewState
 		    NewState
 		 else
-		   {Browser.browse 'error on newSquare add'} {Delay 2000} State
+		   {Browser.browse 'error on newPlayerList Msg'} {Delay 2000} State
 		 end
 	      end
 	     }
@@ -286,32 +284,33 @@ proc{NewSquare RessourceType GameMaster ?Sid}    % à l'issu combat : sent winne
    {NewPlayerList PlayerList DefaultTeamIds}
    DefaultTeamStrenght = {MakeTuple teamStrenght NUMBER_OF_TEAMS} for I in 1..NUMBER_OF_TEAMS do DefaultTeamStrenght.I = 0 end 
 in   
-   Sid = {NewStatePortObject state(free RessourceType DefaultTeamStrenght DefaultTeamIds)  % TeamStrenght = tuple représentant la force de l'équipe sur cette case % team ids = tuple avec les cons
-	  fun{$ State Msg} %{Browser.browse square} {Browser.browse State}{Browser.browse Msg} {Delay 2000}                                            % TeamIds = tuple contenant 1 tuple par équipe contenant les Ids des players sur la case
+   Sid = {NewStatePortObject state(free RessourceTypeInitialiaser DefaultTeamStrenght DefaultTeamIds)  % TeamStrenght = tuple représentant la force de l'équipe sur cette case % team ids = tuple avec les cons
+	  fun{$ State Msg}                                                                 % TeamIds = tuple contenant 1 tuple par équipe contenant les Ids des players sur la case
 	     case State
 	     of state(free RessourceType TeamStrenght TeamIds) then
 		case Msg
 		of entering(Pid Team Strenght) then
-		   TeamIdentifys
+		   TeamIdentifiers
 		in
-		   {Send PlayerList add(Pid Team TeamIdentifys)}
-		   {Wait TeamIdentifys}
-		   state(free RessourceType {AddInTuple TeamStrenght Strenght Team teamStrenght} TeamIdentifys)
+		   {Send PlayerList add(Pid Team TeamIdentifiers)}
+		   {Wait TeamIdentifiers}
+		   state(free RessourceType {AddInTuple TeamStrenght Strenght Team teamStrenght} TeamIdentifiers)
 		[] exploit(Team) then                              % passe de free à plus free + envoyer tuple
 		    state(exploited RessourceType Team TeamStrenght TeamIds)
 		[] leave(Pid Team Strenght) then
-		   TeamIdentifys
+		   TeamIdentifiers
 		in
-		   {Send PlayerList remove(Pid Team TeamIdentifys)}
-		 %  {Wait TeamIdentifys}
-		   state(free RessourceType {AddInTuple TeamStrenght (Strenght*~1) Team teamStrenght} TeamIdentifys)   % multiplify by -1 because we want to decrease the strenght
-		[] whichRessource(WhichRessource) then
+		   {Send PlayerList remove(Pid Team TeamIdentifiers)}
+		 %  {Wait TeamIdentifiers}
+		   state(free RessourceType {AddInTuple TeamStrenght (Strenght*~1) Team teamStrenght} TeamIdentifiers)   % multiplify by -1 because we want to decrease the strenght
+		[] whichRessource(?WhichRessource) then
 		   case RessourceType
 		   of nil then WhichRessource = 0
 		   [] food then WhichRessource = 1
 		   [] wood then WhichRessource = 2
 		   [] stone then WhichRessource = 3
-		   else WhichRessource = 4
+		   [] steel then WhichRessource = 4
+		   else {Browser.browse 'ressource type error error'}
 		   end
 		   State
 		else {Browser.browse 'error on Msg free square'} {Delay 2000} State
@@ -320,17 +319,17 @@ in
 		case Msg
 		of release() then State                                                  % TODO
 		[]  entering(Pid Team Strenght) then
-		   TeamIdentifys
+		   TeamIdentifiers
 		in
-		   {Send PlayerList add(Pid Team TeamIdentifys)}
-		   {Wait TeamIdentifys}
-		    state(free RessourceType {AddInTuple TeamStrenght Strenght Team teamStrenght} TeamIdentifys)
+		   {Send PlayerList add(Pid Team TeamIdentifiers)}
+		   {Wait TeamIdentifiers}
+		    state(free RessourceType {AddInTuple TeamStrenght Strenght Team teamStrenght} TeamIdentifiers)
 		[] leave(Pid Team Strenght) then
-		   TeamIdentifys
+		   TeamIdentifiers
 		in
-		   {Send PlayerList remove(Pid Team TeamIdentifys)}
-		   {Wait TeamIdentifys}
-		   state(free RessourceType {AddInTuple TeamStrenght (Strenght*~1) Team teamStrenght} TeamIdentifys)   % multiplify by -1 because we want to decrease the strenght
+		   {Send PlayerList remove(Pid Team TeamIdentifiers)}
+		   {Wait TeamIdentifiers}
+		   state(free RessourceType {AddInTuple TeamStrenght (Strenght*~1) Team teamStrenght} TeamIdentifiers)   % multiplify by -1 because we want to decrease the strenght
 		[] exploit(Team) then
 		   if(ExploiteByTeam == Team) then
 		       State
@@ -352,7 +351,7 @@ in
 		   end
 		   State
 		else
-		  {Browser.browse 'error on Msg occupé square'} {Delay 2000} State
+		  {Browser.browse 'error on Msg exploited square'} {Delay 2000} State
 		end
 	     else
 		{Browser.browse 'new square state error'}{Delay 2000}
@@ -383,7 +382,9 @@ proc{NewBrain Pid ?Bid}
 		   WhichRessource Position  in
 		   {Send Pid whichPosition(Position)}
 		   {Send SquareBoard.(Position.x).(Position.y) whichRessource(WhichRessource)}
+		   {Browser.browse WhichRessource}
 		   if WhichRessource == 0 then
+		      {Browser.browse moving55}
 		      {Send Pid move(destination(x:5 y:5))} % move vers ressource
 		   else
 		      {Send Pid exploit(WhichRessource)}	   
@@ -448,19 +449,19 @@ for X in 1..HEIGHT do
    for Y in 1..WIDTH do
       if((Y == 5) andthen (X == 5))
       then
-	 SquareBoard.X.Y = {NewSquare 1 GMid}
+	 SquareBoard.X.Y = {NewSquare food GMid}
 	 {SetBoxColor position(x:5 y:5) blue}
       else
-      SquareBoard.X.Y = {NewSquare 0 GMid}
+      SquareBoard.X.Y = {NewSquare nil GMid}
       end
    end
 end
 
 
-X1 X2 X3 in 
-thread {NewBrain X1 X2} end
-thread {NewPlayer X2 GMid 1 X1} end
-{Send X2 nextOrder}
+P Br in 
+thread {NewBrain P Br} end
+thread {NewPlayer Br GMid 1 P} end
+{Send Br nextOrder}
 /*
 thread {NewPlayer GMid 1 X2} end
 
