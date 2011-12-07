@@ -9,10 +9,11 @@ define
 
    % Default Arguments
    NUMBER_OF_TEAMS = 2
-   HOMES = {MakeTuple homes NUMBER_OF_TEAMS}              % tuple qui contient les Ids des Teams
+   TEAMS = {MakeTuple homes NUMBER_OF_TEAMS}              % tuple qui contient les Ids des Teams
    HEIGHT   = 16
    WIDTH    = HEIGHT
    ADJUST = 80
+   ACTION_DELAY = 1000
 
    SquareBoard = {MakeTuple squareBoard HEIGHT} for I in 1..HEIGHT do SquareBoard.I = {MakeTuple line WIDTH} end
    
@@ -135,6 +136,7 @@ proc{NewPlayer Bid GameMaster Team ?Pid}
    Tid = {Timer}
    ITag = {Canvas newTag($)}
    HomePosition
+   GraphicDisplayer = {NewGraphicDisplayer ITag}
 
   % Bid = {NewBrain Pid}
    
@@ -151,9 +153,10 @@ proc{NewPlayer Bid GameMaster Team ?Pid}
       end
    end
 in
-   {Send HOMES.Team whichPosition(HomePosition)}
-   {SetBoxImage PlayerImage HomePosition ITag}
-   {Delay 1000}
+   {Send TEAMS.Team whichPosition(HomePosition)}
+   {Send GraphicDisplayer refresh(HomePosition)}
+%   {SetBoxImage PlayerImage HomePosition ITag}
+   {Delay ACTION_DELAY}
 
    {Send SquareBoard.(HomePosition.x).(HomePosition.y) entering(Pid Team STRENGHT_DEFAULT)}
    
@@ -167,11 +170,11 @@ in
 	     case State
 	     of state(waiting Position Bag Team Strenght) then
 		case Msg
-		of move(Destination) then
-		   {Send GameMaster movePlayer(Position Destination Pid Team Strenght)}
-		   {Send Tid starttimer(1000 Pid)}
-		   {ITagDeleter ITag}
-		   {SetBoxImage PlayerImage Destination ITag}
+		of move(Destination) then  Res in
+		   {Send GameMaster movePlayer(Position Destination Pid Team Strenght Result)}
+		   
+		   {Send Tid starttimer(ACTION_DELAY Pid)}
+		   {Send GraphicDisplayer refresh(Destination)}
 		   state(busy Destination Bag Team Strenght)
 		[] goTo(Destination) then
 	%	   if(Destination == Position) then       % if true then nothing to do but wait next instruction (so need to go through busy state)
@@ -184,20 +187,21 @@ in
 		   NewDestination = position(x:Position.x+DirX y:Position.y+DirY)
 		   {Send Pid move(NewDestination)}
 		   State
-	%	   {Delay 1000}
+	%	   {Delay ACTION_DELAY}
 	%	   {Send Pid goTo(Destination)}
 	%	   state(waiting NewPosition Bag Team Strenght)
 	%	   end
 		[] exploit(RessourceType) then     % ressource = tuple (0 0 0 0)
+		   {Send GraphicDisplayer refreshWithFlash(Position)}
 		   if({BagIsFull Bag}) then
-		      {Send Tid starttimer(1000 Pid)}
+		      {Send Tid starttimer(ACTION_DELAY Pid)}
 		      state(busy Position Bag Team Strenght)              % si exploite alors que sac full > perte de temps, c'est à brain de figure it out
 		   else
 		      Amount = 1           % exploit = always 1 by 1, not hard coded
 		      NewBag = {AddInTuple Bag Amount RessourceType bag}
 		   in
 		      {Send SquareBoard.(Position.x).(Position.y) exploit(Team)}    % changer square en etat exploited
-		      {Send Tid starttimer(1000 Pid)}
+		      {Send Tid starttimer(ACTION_DELAY Pid)}
 		      state(busy Position NewBag Team Strenght)
 		   end
 	%	[] buildTower then
@@ -210,7 +214,9 @@ in
 		   State
 		[] whichTeam(?T) then T = Team State
 		[] whichPosition(?Pos) then Pos = Position State
-		[] emptyBag then {Browser.browse 'todo emptybag'} State
+		[] emptyBag then {Browser.browse Bag}
+		   {Send Tid starttimer(ACTION_DELAY Pid)}
+		   state(busy Position EMPTY_BAG Team Strenght)
 		else {Browser.browse "Player State waiting message error"} State
 		end
 	     [] state(dead) then State           % risque de faire des calcul pour rien
@@ -239,7 +245,6 @@ proc{NewGameMaster ?GMid}
 		 {NewPlayer Bid GMid Team Pid}                    % TODO : Add to brain making players
 	    %  [] MakeTower then
 	      [] movePlayer(From Dest Pid Team Strenght) then
-		 {Delay 10000}
 		 {Send SquareBoard.(From.x).(From.y) leave(Pid Team Strenght)}
 		 {Send SquareBoard.(Dest.x).(Dest.y) entering(Pid Team Strenght)}
 % envoyer message au gérant des graphics 
@@ -247,6 +252,24 @@ proc{NewGameMaster ?GMid}
 		 %calcul qui gagne
 		 {Send Sid battleResult(winner)}                                              %TODO
 	      else {Browser.browse 'new Game Master msg error :'} {Browser.browse Msg} {Delay 10000}
+	      end
+	   end
+	  }
+end
+
+proc{NewGraphicDisplayer ITag ?GDid}
+   GDid = {NewPortObject
+	   proc{$ Msg}
+	      case Msg
+	      of refresh(Position) then
+		 {ITag delete}
+		 {SetBoxImage PlayerImage Position ITag}
+	      [] refreshWithFlash(Position) then
+		 {ITag delete}
+		 {Delay 250}
+		 {SetBoxImage PlayerImage Position ITag}
+		 
+	      else {Browser.browse 'GraphicDisplayer'}
 	      end
 	   end
 	  }
@@ -396,6 +419,7 @@ in
 	  fun{$ State Msg}
 	     case Msg
 	     of whichPosition(?Position) then Position = Location State
+	     [] addToPool(Bag) then 
 	     end
 	  end
 	 }
@@ -418,7 +442,7 @@ proc{NewBrain Pid ?Bid}
 		if IsBagFull then
 		   Team HomePosition in
 		   {Send Pid whichTeam(Team)}
-		   {Send HOMES.Team whichPosition(HomePosition)} 
+		   {Send TEAMS.Team whichPosition(HomePosition)} 
 		   if(Position == HomePosition)
 		   then {Send Pid emptyBag}
 		   else {Send Pid goTo(HomePosition)}
@@ -487,8 +511,8 @@ Window={QTk.build td(Toolbar Grid ScoreBoard)}
 
 GMid
 thread {NewGameMaster GMid} end
-thread {NewTeam position(x:1 y:1) HOMES.1} end
-thread {NewTeam position(x:4 y:4) HOMES.2} end
+thread {NewTeam position(x:1 y:1) TEAMS.1} end
+thread {NewTeam position(x:4 y:4) TEAMS.2} end
 
 for X in 1..HEIGHT do
    for Y in 1..WIDTH do
@@ -516,11 +540,11 @@ thread {NewPlayer GMid 1 X3} end
 thread
     for I in 1..5 do
        {Send X2 move(position(x:0+I y:0))}
-       {Delay 1000}
+       {Delay ACTION_DELAY}
     end
 end
 thread {Send X3 move(position(x:3 y:0))}
-       {Delay 1000}
+       {Delay ACTION_DELAY}
 end
 */
 end
