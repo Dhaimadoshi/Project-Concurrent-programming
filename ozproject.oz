@@ -9,7 +9,7 @@ define
 
    % Default Arguments
    NUMBER_OF_TEAMS = 2
-   HOME_LOCATION = homes(position(x:1 y:1))
+   HOMES = {MakeTuple homes NUMBER_OF_TEAMS}              % tuple qui contient les Ids des Teams
    HEIGHT   = 16
    WIDTH    = HEIGHT
    ADJUST = 80
@@ -134,22 +134,31 @@ proc{NewPlayer Bid GameMaster Team ?Pid}
    STRENGHT_DEFAULT = 1            % 1 = no weapon, 3 = weapon equiped
    Tid = {Timer}
    ITag = {Canvas newTag($)}
+   HomePosition
 
   % Bid = {NewBrain Pid}
    
    fun{BagIsFull Bag}
-      Boolean
-   in
       Boolean = 10 == Bag.1 + Bag.2 + Bag.3 + Bag.4
+   in
       Boolean
    end
+
+   fun{Parity X Y}
+      if(X > Y) then 1
+      elseif(X == Y) then 0
+      else ~1
+      end
+   end
 in
-   {SetBoxImage PlayerImage position(x:3 y:3) ITag}
+   {Send HOMES.Team whichPosition(HomePosition)}
+   {SetBoxImage PlayerImage HomePosition ITag}
    {Delay 1000}
-   {Send SquareBoard.3.3 entering(Pid Team STRENGHT_DEFAULT)}
+
+   {Send SquareBoard.(HomePosition.x).(HomePosition.y) entering(Pid Team STRENGHT_DEFAULT)}
    
    Pid = {NewStatePortObject state(waiting
-				   position(x:3 y:3)% HOME_LOCATION.Team
+				   HomePosition
 				   EMPTY_BAG
 				   Team
 				   STRENGHT_DEFAULT)
@@ -164,6 +173,21 @@ in
 		   {ITagDeleter ITag}
 		   {SetBoxImage PlayerImage Destination ITag}
 		   state(busy Destination Bag Team Strenght)
+		[] goTo(Destination) then
+	%	   if(Destination == Position) then       % if true then nothing to do but wait next instruction (so need to go through busy state)
+	%	      {Send Tid starttimer(0 Pid)}
+	%	      state(busy Position Bag Team Strenght)
+	%	   else
+		   DirX DirY NewDestination in
+		   DirX = {Parity Destination.x Position.x}
+		   DirY = {Parity Destination.y Position.y}
+		   NewDestination = position(x:Position.x+DirX y:Position.y+DirY)
+		   {Send Pid move(NewDestination)}
+		   State
+	%	   {Delay 1000}
+	%	   {Send Pid goTo(Destination)}
+	%	   state(waiting NewPosition Bag Team Strenght)
+	%	   end
 		[] exploit(RessourceType) then     % ressource = tuple (0 0 0 0)
 		   if({BagIsFull Bag}) then
 		      {Send Tid starttimer(1000 Pid)}
@@ -186,6 +210,7 @@ in
 		   State
 		[] whichTeam(?T) then T = Team State
 		[] whichPosition(?Pos) then Pos = Position State
+		[] emptyBag then {Browser.browse 'todo emptybag'} State
 		else {Browser.browse "Player State waiting message error"} State
 		end
 	     [] state(dead) then State           % risque de faire des calcul pour rien
@@ -303,15 +328,16 @@ in
 		   {Send PlayerList remove(Pid Team TeamIdentifiers)}
 		 %  {Wait TeamIdentifiers}
 		   state(free RessourceType {AddInTuple TeamStrenght (Strenght*~1) Team teamStrenght} TeamIdentifiers)   % multiplify by -1 because we want to decrease the strenght
-		[] whichRessource(?WhichRessource) then
+		[] whichRessource(?WhichRessource) then   % tuple voir brain
 		   case RessourceType
-		   of nil then WhichRessource = 0
-		   [] food then WhichRessource = 1
-		   [] wood then WhichRessource = 2
-		   [] stone then WhichRessource = 3
-		   [] steel then WhichRessource = 4
+		   of nil then WhichRessource.1 = 0 
+		   [] food then WhichRessource.1 = 1
+		   [] wood then WhichRessource.1 = 2
+		   [] stone then WhichRessource.1 = 3
+		   [] steel then WhichRessource.1 = 4
 		   else {Browser.browse 'ressource type error error'}
 		   end
+		  
 		   State
 		else {Browser.browse 'error on Msg free square'} {Delay 2000} State
 		end
@@ -341,13 +367,13 @@ in
 	%	      {Wait WinnerAck}
 	%	      %{Send GameMaster TeamsToBeKilled}
 		   end
-		[] whichRessource(WhichRessource) then
+		[] whichRessource(WhichRessource) then       % tuple voir brain
 		   case RessourceType
-		   of nil then WhichRessource = 0
-		   [] food then WhichRessource = 1
-		   [] wood then WhichRessource = 2
-		   [] stone then WhichRessource = 3
-		   else WhichRessource = 4
+		   of nil then WhichRessource.1 = 0 
+		   [] food then WhichRessource.1 = 1
+		   [] wood then WhichRessource.1 = 2
+		   [] stone then WhichRessource.1 = 3
+		   else WhichRessource.1 = 4
 		   end
 		   State
 		else
@@ -361,6 +387,20 @@ in
 	 }
 end
 
+proc {NewTeam Location ?Tid}
+   Default_State = state(0 0 0 0 )         % state(food wood stone steel)
+in
+   {SetBoxColor Location yellow}
+   
+   Tid = {NewStatePortObject Default_State
+	  fun{$ State Msg}
+	     case Msg
+	     of whichPosition(?Position) then Position = Location State
+	     end
+	  end
+	 }
+end
+
 /*********
 ** Brain functions
 *
@@ -369,25 +409,28 @@ end
 proc{NewBrain Pid ?Bid}
    
    Bid = {NewPortObject
-	  proc{$ Msg}
+	  proc{$ Msg} 
 	     case Msg
 	     of nextOrder then
-		IsBagFull in
+		IsBagFull Position in
+		{Send Pid whichPosition(Position)}
 		{Send Pid isBagFull(IsBagFull)}
 		if IsBagFull then
-		   Team in
+		   Team HomePosition in
 		   {Send Pid whichTeam(Team)}
-		   {Send Pid move(HOME_LOCATION.Team)}
+		   {Send HOMES.Team whichPosition(HomePosition)} 
+		   if(Position == HomePosition)
+		   then {Send Pid emptyBag}
+		   else {Send Pid goTo(HomePosition)}
+		   end
 		else
-		   WhichRessource Position  in
-		   {Send Pid whichPosition(Position)}
+		   WhichRessource = {MakeTuple whichRessource 2} in              % WichRessource est un tuple qui contient dans son premier champ le type de la case et dans son deuxieme champ la case vers laquelle se trouve la ressource la plus proche dans le cas ou il n'y a pas de ressource sur la case présente
 		   {Send SquareBoard.(Position.x).(Position.y) whichRessource(WhichRessource)}
-		   {Browser.browse WhichRessource}
-		   if WhichRessource == 0 then
-		      {Browser.browse moving55}
-		      {Send Pid move(destination(x:5 y:5))} % move vers ressource
+		   if WhichRessource.1 == 0 then
+		      WhichRessource.2 = position(x:5 y:5)
+		      {Send Pid goTo(WhichRessource.2)}
 		   else
-		      {Send Pid exploit(WhichRessource)}	   
+		      {Send Pid exploit(WhichRessource.1)}	   
 		   end
 		end
 	     end
@@ -444,6 +487,8 @@ Window={QTk.build td(Toolbar Grid ScoreBoard)}
 
 GMid
 thread {NewGameMaster GMid} end
+thread {NewTeam position(x:1 y:1) HOMES.1} end
+thread {NewTeam position(x:4 y:4) HOMES.2} end
 
 for X in 1..HEIGHT do
    for Y in 1..WIDTH do
@@ -458,7 +503,7 @@ for X in 1..HEIGHT do
 end
 
 
-P Br in 
+P Br in
 thread {NewBrain P Br} end
 thread {NewPlayer Br GMid 1 P} end
 {Send Br nextOrder}
