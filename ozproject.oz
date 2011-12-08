@@ -12,13 +12,17 @@ define
    TEAMS = {MakeTuple homes NUMBER_OF_TEAMS}              % tuple qui contient les Ids des Teams
    HEIGHT   = 16
    WIDTH    = HEIGHT
+   SQUARE_HEIGHT = 40
+   SQUARE_WIDTH = SQUARE_HEIGHT
    ADJUST = 80
    ACTION_DELAY = 1000
+   GOAL = goal(200 200 200 200)
    
    SquareBoard = {MakeTuple squareBoard HEIGHT} for I in 1..HEIGHT do SquareBoard.I = {MakeTuple line WIDTH} end
    
    CD = {OS.getCWD}
-   PlayerImage = {QTk.newImage photo(file:CD#'/bomb.gif')}
+   PlayerImage = {QTk.newImage photo(file:CD#'/mario.gif')}
+   WoodImage = {QTk.newImage photo(file:CD#'/wood.gif')}
    
    /**
     % Function that creat a port without states.
@@ -123,14 +127,17 @@ end
 
 proc{NewPlayer Team ?Pid}
 
-   fun{ComputeNextPosition Destination}
-      Destination
+   fun{ComputeNextPosition Position Destination}
+      DirX = {Parity Position.x Destination.x}
+      DirY = {Parity Position.y Destination.y}
+   in
+      position(x:Position.x + DirX y: Position.y + DirY)
    end
    
    fun{Parity X Y}
-      if(X > Y) then 1
+      if(X > Y) then ~1
       elseif(X == Y) then 0
-      else ~1
+      else 1
       end
    end
   % Bid = {NewBrain Pid}
@@ -146,13 +153,13 @@ proc{NewPlayer Team ?Pid}
 in
    {Send TEAMS.Team whichPosition(HomePosition)}
    {Send GraphicDisplayer refresh(HomePosition)}
-   {Delay ACTION_DELAY}
+  % {Delay ACTION_DELAY}
    {Send Bid nextOrder}
    {Send SquareBoard.(HomePosition.x).(HomePosition.y) entering(Pid Team)}
   
    
    Pid = {NewStatePortObject DefaultState
-	  fun{$ State Msg}                                                                   {Browser.browse player} {Browser.browse State} {Browser.browse Msg} {Delay 1000}
+	  fun{$ State Msg}                                                              %     {Browser.browse player} {Browser.browse State} {Browser.browse Msg} {Delay 1000}
 	     case State of state(S Position Destination Bag Team Strenght) then
 		case Msg
 		of goto(Destination) andthen S == wait orelse S == move then
@@ -161,7 +168,7 @@ in
 		      state(wait Position Destination Bag Team Strenght)
 		   else
 		      Ack
-		      NextPosition = {ComputeNextPosition Destination}
+		      NextPosition = {ComputeNextPosition Position Destination}
 		   in
 		      {Send SquareBoard.(Position.x).(Position.y) leave(Pid Team Ack)}  % /!\ ACK à vérifier
 		      {Wait Ack}
@@ -176,6 +183,7 @@ in
 		[] getRessource(RessourceType) andthen S == exploit then
 		   NewBag = {AddInTuple Bag RessourceType bag}
 		in
+		   {Send GraphicDisplayer refreshWithFlash(Position 250)}
 		   {Send Bid nextOrder}
 		   state(wait Position Destination NewBag Team Strenght)
 		[] cancel andthen S == exploit then
@@ -183,9 +191,11 @@ in
 	%	[] builTower andthen S == wait then          % delay de la tour sera geré dans la tour
 		[] emptyBag andthen S == wait then
 		   {Send TEAMS.Team addToPool(Bag)}
+		   {Send Bid nextOrder}
 		   state(wait Position Destination EMPTY_BAG Team Strenght)		   
 		[] stoptimer andthen S == wait orelse S == move then
 		   {Send Pid goto(Destination)}
+		   {Send GraphicDisplayer refresh(Position)}
 		   State
 		[] whichPosition(?Pos) then Pos = Position State
 		[] whichDestination(?Dest) then Dest = Destination State
@@ -299,7 +309,7 @@ in
    
    Sid = {NewStatePortObject
 	  DefaultState
-	  fun{$ State Msg}                                         {Browser.browse square} {Browser.browse State} {Browser.browse Msg} {Delay 1000}
+	  fun{$ State Msg}                                       %  {Browser.browse square} {Browser.browse State} {Browser.browse Msg} {Delay 1000}
 	     FarmerList RessourceType PlayerIdsList TowerList
 	  in
 	     state(FarmerList RessourceType PlayerIdsList TowerList) = State
@@ -343,8 +353,6 @@ in
 		   end
 		end
 	     [] stoptimer then
-		{Browser.browse stoptimer}
-		{Browser.browse FarmerList} {Delay 5000}
 		{Send {Head FarmerList} getRessource(RessourceType)}
 		state({Tail FarmerList} RessourceType PlayerIdsList TowerList)
 	     [] isRessource(IsRessource) then
@@ -361,12 +369,23 @@ in
 end
 
 proc {NewTeam Location ?Tid}
+
+   fun{IsGoal Pool}
+      if (GOAL.1 < Pool.1) andthen
+	 (GOAL.2 < Pool.2) andthen
+	 (GOAL.3 < Pool.3) andthen
+	 (GOAL.4 < Pool.4) then true
+      else
+	 false
+      end
+   end
+   
    Default_State = state(0 0 0 0)         % state(food wood stone steel)
 in
    {SetBoxColor Location yellow}
    
    Tid = {NewStatePortObject Default_State
-	  fun{$ State Msg}                                           {Browser.browse team} {Browser.browse State} {Browser.browse Msg} {Delay 1000}
+	  fun{$ State Msg}                                          % {Browser.browse team} {Browser.browse State} {Browser.browse Msg} {Delay 1000}
 	     Food Wood Stone Steel
 	  in
 	     state(Food Wood Stone Steel) = State
@@ -374,10 +393,17 @@ in
 	     of whichPosition(?Position) then Position = Location State
 	     [] addToPool(Bag) then
 		state((Food + Bag.1) (Wood + Bag.2) (Stone + Bag.3) (Steel + Bag.4))
+	     [] isGoalComplete(?Bool) then
+		Bool = {IsGoal State}
+		State
 	     else {Browser.browse newTeamMsgerror} {Delay 5000} State
 	     end
 	  end
 	 }
+end
+
+proc{NewTower ?TowerId}
+   TowerId = 1
 end
 
 /*********
@@ -427,6 +453,24 @@ in
 	 }
 end
 
+proc{GameLauncher}
+   X in
+   for X in 1..HEIGHT do
+      for Y in 1..WIDTH do
+	 if(X == 5 andthen Y == 5) then
+	    thread SquareBoard.X.Y = {NewSquare 2} end
+	    {SetBoxImage WoodImage position(x:X y:Y) {Canvas newTag($)}}
+	 else
+	    thread SquareBoard.X.Y = {NewSquare 0} end
+	 end
+      end
+   end
+  
+   TEAMS.1 = thread {NewTeam position(x:1 y:1)} end
+   
+   X = thread {NewPlayer 1} end
+end
+
 /*******
 ** Interface
 *
@@ -439,9 +483,9 @@ proc{NewGraphicDisplayer ITag ?GDid}
 	      of refresh(Position) then
 		 {ITag delete}
 		 {SetBoxImage PlayerImage Position ITag}
-	      [] refreshWithFlash(Position) then
+	      [] refreshWithFlash(Position Time) then
 		 {ITag delete}
-		 {Delay 250}
+		 {Delay Time}
 		 {SetBoxImage PlayerImage Position ITag}
 		 
 	      else {Browser.browse graphicDisplayer}
@@ -464,7 +508,13 @@ end
 
 
 proc {SetBoxImage I Position ITag}
-   {Canvas tk(create image (Position.x)*40+12 (Position.y)*40+12 image:I tags:ITag)}
+   AdjustmentX = 20
+   AdjustmentY = 20
+   PixelsPositionX PixelsPositionY
+in
+   PixelsPositionX = (Position.x) * SQUARE_WIDTH + AdjustmentX
+   PixelsPositionY = (Position.y) * SQUARE_HEIGHT + AdjustmentY
+   {Canvas tk(create image PixelsPositionX PixelsPositionY image:I tags:ITag)}
 end
 proc {ITagDeleter ITag}
    {ITag delete}
@@ -492,18 +542,6 @@ Window={QTk.build td(Toolbar Grid ScoreBoard)}
 
 {Window show}
 
-for X in 1..HEIGHT do
-   for Y in 1..WIDTH do
-      if(X == 5 andthen Y == 5) then thread SquareBoard.X.Y = {NewSquare 1} end
-      else
-	thread SquareBoard.X.Y = {NewSquare 0} end
-      end
-   end
-end
-
-
-TEAMS.1 = thread {NewTeam position(x:1 y:1)} end
-
-X = thread {NewPlayer 1} end
+{GameLauncher}
 
 end
