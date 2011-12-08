@@ -8,15 +8,16 @@ import
 define
    
    % Default Arguments
-   NUMBER_OF_TEAMS = 2
+   NUMBER_OF_TEAMS = 6
    TEAMS = {MakeTuple homes NUMBER_OF_TEAMS}              % tuple qui contient les Ids des Teams
    HEIGHT   = 16
    WIDTH    = HEIGHT
    SQUARE_HEIGHT = 40
    SQUARE_WIDTH = SQUARE_HEIGHT
    ADJUST = 80
-   ACTION_DELAY = 1000
+   ACTION_DELAY = 300
    GOAL = goal(200 200 200 200)
+   RESSOURCE_SPOTS
    
    SquareBoard = {MakeTuple squareBoard HEIGHT} for I in 1..HEIGHT do SquareBoard.I = {MakeTuple line WIDTH} end
    
@@ -145,6 +146,7 @@ proc{NewPlayer Team ?Pid}
    Bid = {NewBrain Pid} 
    EMPTY_BAG = bag(0 0 0 0)
    STRENGHT_DEFAULT = 1            % 1 = no weapon, 3 = weapon equiped
+   WEAPON = 2
    Tid = {Timer}
    ITag = {Canvas newTag($)}
    HomePosition 
@@ -159,52 +161,61 @@ in
   
    
    Pid = {NewStatePortObject DefaultState
-	  fun{$ State Msg}                                                              %     {Browser.browse player} {Browser.browse State} {Browser.browse Msg} {Delay 1000}
-	     case State of state(S Position Destination Bag Team Strenght) then
-		case Msg
-		of goto(Destination) andthen S == wait orelse S == move then
-		   if(Position == Destination) then
-		      {Send Bid nextOrder}
-		      state(wait Position Destination Bag Team Strenght)
-		   else
-		      Ack
-		      NextPosition = {ComputeNextPosition Position Destination}
-		   in
-		      {Send SquareBoard.(Position.x).(Position.y) leave(Pid Team Ack)}  % /!\ ACK à vérifier
-		      {Wait Ack}
-		      {Send SquareBoard.(NextPosition.x).(NextPosition.y) entering(Pid Team)}
-		      {Send Tid starttimer(1000 Pid)}
-		      state(move NextPosition Destination Bag Team Strenght)
-		   end
-		[] die then state(dead)
-		[] exploit andthen S == wait then
-		   {Send SquareBoard.(Position.x).(Position.y) exploit(Pid Team)}
-		   state(exploit Position Destination Bag Team Strenght)
-		[] getRessource(RessourceType) andthen S == exploit then
-		   NewBag = {AddInTuple Bag RessourceType bag}
-		in
-		   {Send GraphicDisplayer refreshWithFlash(Position 250)}
+	  fun{$ State Msg} %  {Browser.browse player} {Browser.browse State} {Browser.browse Msg} {Delay 1000}
+	     S Position Destination Bag Team Strenght
+	  in
+	     state(S Position Destination Bag Team Strenght) = State
+	     case Msg
+	     of goto(Destination) andthen S == wait orelse S == move then
+		if(Position == Destination) then
 		   {Send Bid nextOrder}
-		   state(wait Position Destination NewBag Team Strenght)
-		[] cancel andthen S == exploit then
 		   state(wait Position Destination Bag Team Strenght)
-	%	[] builTower andthen S == wait then          % delay de la tour sera geré dans la tour
-		[] emptyBag andthen S == wait then
-		   {Send TEAMS.Team addToPool(Bag)}
-		   {Send Bid nextOrder}
-		   state(wait Position Destination EMPTY_BAG Team Strenght)		   
-		[] stoptimer andthen S == wait orelse S == move then
-		   {Send Pid goto(Destination)}
-		   {Send GraphicDisplayer refresh(Position)}
-		   State
-		[] whichPosition(?Pos) then Pos = Position State
-		[] whichDestination(?Dest) then Dest = Destination State
-		[] whichBag(?B) then B = Bag State
-		[] whichTeam(?T) then T = Team State
-		[] whichStrenght(?S) then S = Strenght State
-		else {Browser.browse errorOnPlayerState} {Delay 5000} State
+		else
+		   Ack
+		   NextPosition = {ComputeNextPosition Position Destination}
+		in
+		   {Send SquareBoard.(Position.x).(Position.y) leave(Pid Team Ack)}  % /!\ ACK à vérifier
+		   {Wait Ack}
+		   {Send SquareBoard.(NextPosition.x).(NextPosition.y) entering(Pid Team)}
+		   {Browser.browse move#Team}
+		   {Send Tid starttimer(ACTION_DELAY Pid)}
+		   state(move NextPosition Destination Bag Team Strenght)
 		end
-	     else {Browser.browse errorOnPlayerState} {Delay 5000} State
+	     [] die then
+		{Send GraphicDisplayer kill}
+		state(dead Position Destination Bag Team Strenght)
+	     [] exploit andthen S == wait then
+		{Browser.browse sentexploit#Team#S}
+		{Send SquareBoard.(Position.x).(Position.y) exploit(Pid Team)}
+		state(exploit Position Destination Bag Team Strenght)
+	     [] getRessource(RessourceType) andthen S == exploit then
+		NewBag = {AddInTuple Bag RessourceType bag}
+	     in
+		{Send GraphicDisplayer refreshWithFlash(Position 250)}
+		{Send Bid nextOrder}
+		{Browser.browse receiveRes#Team}
+		state(wait Position Destination NewBag Team Strenght)
+	     [] cancel andthen S == exploit then
+		{Browser.browse canceldid#Team}
+		{Send Bid nextOrder}
+		state(wait Position Destination Bag Team Strenght)
+	%	[] builTower andthen S == wait then          % delay de la tour sera geré dans la tour
+	     [] buyWeapon andthen S == wait then state(wait Position Destination Bag Team (Strenght + WEAPON))
+	     [] emptyBag andthen S == wait then
+		{Send TEAMS.Team addToPool(Bag)}
+		{Send Bid nextOrder}
+		state(wait Position Destination EMPTY_BAG Team Strenght)		   
+	     [] stoptimer andthen S == wait orelse S == move then
+		{Send Pid goto(Destination)}
+		{Send GraphicDisplayer refresh(Position)}
+		State
+	     [] whichPosition(?PosisitionResult) then PosisitionResult = Position State
+	     [] whichDestination(?DestinationResult) then DestinationResult = Destination State
+	     [] whichBag(?BagResult)  then BagResult = Bag State
+	     [] whichTeam(?TeamResult Who)  then TeamResult = Team State
+	     [] whichStrenght(?StrenghtResult)  then StrenghtResult = Strenght State
+	     [] whichState(?StateResult) then StateResult = S State
+	     else {Browser.browse errorOnPlayerState#State#Msg} {Delay ACTION_DELAY} State
 	     end
 	  end
 	 }
@@ -212,8 +223,11 @@ end
 
 proc{NewSquare RessourceTypeInitialiaser ?Sid}    % à l'issu combat : sent winner to list, list send loser to gameMaster, GameMaster kill them and sent remove from square to list
    proc{SendToAllList List Msg}
-      case List of H|T then {Send H Msg}
+      case List of H|T then
+	 {Send H Msg} {SendToAllList T Msg}
+	 {Browser.browse msgSent#Msg}
       else skip
+	 			 
       end
    end
    
@@ -231,13 +245,13 @@ proc{NewSquare RessourceTypeInitialiaser ?Sid}    % à l'issu combat : sent winn
       end
    in
       WinnerTeam = {GetBest {Record.toList TeamStrenght} CurrentTeam BestTeam 0}
-      if(WinnerTeam == 0) then                                            % if WinnerTeam == 0 the all lose fight and die
+      if(WinnerTeam == 0) then % if WinnerTeam == 0 the all lose fight and die
 	 {SendToAllList PlayerIds die}
 	 nil#0
       else
-	 Loosers = {ListFilter PlayerIds fun{$ Player} T in {Send Player whichTeam(T)} T == WinnerTeam end}
+	 Loosers = {ListFilter PlayerIds fun{$ Player} T in {Send Player whichTeam(T loosersList)} T == WinnerTeam end}
+	 Winners = {ListFilter PlayerIds fun{$ Player} T in {Send Player whichTeam(T winnerList)} T \= WinnerTeam end}
 	 {SendToAllList Loosers die}
-	 Winners = {ListFilter PlayerIds fun{$ Player} T in {Send Player whichTeam(T)} T \= WinnerTeam end}
 	 Winners#WinnerTeam
       end
    end
@@ -270,9 +284,9 @@ proc{NewSquare RessourceTypeInitialiaser ?Sid}    % à l'issu combat : sent winn
       TeamStrenght = {MakeTuple teamStrenght NUMBER_OF_TEAMS}
       fun{Compute PlayerList TeamStrenght}
 	 case PlayerList of H|T then
-	    Team {Send H whichTeam(Team)}
-	    Strenght {Send H wichStrenght(Strenght)}
-	    NewTeamStrenght 
+	    Team {Send H whichTeam(Team computeStrenght)}
+	    Strenght {Send H whichStrenght(Strenght)}
+	    NewTeamStrenght = {MakeTuple teamStrenght NUMBER_OF_TEAMS} 
 	 in
 	    for I in 1..NUMBER_OF_TEAMS do
 	       if Team \= I then NewTeamStrenght.I = TeamStrenght.I
@@ -283,6 +297,7 @@ proc{NewSquare RessourceTypeInitialiaser ?Sid}    % à l'issu combat : sent winn
 	 end
       end
    in
+      for I in 1..NUMBER_OF_TEAMS do TeamStrenght.I = 0 end
       {Compute PlayerList TeamStrenght}
    end
 
@@ -325,36 +340,53 @@ in
 		Ack = ok
 		state(FarmerList RessourceType NewPlayerIdsList TowerList)
 	     [] exploit(Pid Team) then
+		
 		fun{StateWithNewFarmer}
 		   Fl in
-		   {Send Tid starttimer(1000 Sid)}          %team dans exploit
+		   {Send Tid starttimer(ACTION_DELAY Sid)}          %team dans exploit
+		   {Browser.browse waitRes#Team}
 		   Fl = {AddList FarmerList Pid}
 		   state(Fl RessourceType PlayerIdsList TowerList)
 		end
+		
+		{Browser.browse entrer#Team}
+		PlayersStatus
 	     in
-		if FarmerList == nil then
-		   {StateWithNewFarmer}
+		{Send Pid whichState(PlayersStatus)}
+		if PlayersStatus == dead then {Browser.browse playerStatusInSquareIsUsefull#PlayersStatus} State
 		else
-		   FarmerTeam
-		   FirstFarmer = {Head FarmerList}
-		in
-		   {Send FirstFarmer whichTeam(FarmerTeam)}
-		   if(Team == FarmerTeam) then
-		      {StateWithNewFarmer} 
+		   if FarmerList == nil then
+		      {StateWithNewFarmer}
 		   else
-		      Winners#WinnerTeam = {Fight PlayerIdsList}
+		      FarmerTeam
+		      FirstFarmer = {Head FarmerList}
 		   in
-		      if(Team == WinnerTeam) then
-			 state(nil RessourceType Winners TowerList)
+		      {Send FirstFarmer whichTeam(FarmerTeam exploit1FarmerTeam)}
+		      if(Team == FarmerTeam) then
+			 {StateWithNewFarmer} 
 		      else
-			 {SendToAllList FarmerList cancel}
-			 state(nil RessourceType Winners TowerList)
+			 Winners#WinnerTeam = {Fight PlayerIdsList}
+			 {Browser.browse battleend#PlayerIdsList#WinnerTeam#Team}
+		      in
+			 if(Team == WinnerTeam) then
+			    {Browser.browse winnerTeam#Team}
+			    {Send Pid cancel}
+			    state(nil RessourceType Winners TowerList)
+			 else
+			    {SendToAllList FarmerList cancel}           % si le lanceur de battle perd alors cancel autres exploit sinon ils sont mort et ok
+			    state(nil RessourceType Winners TowerList)
+			 end
 		      end
 		   end
 		end
 	     [] stoptimer then
-		{Send {Head FarmerList} getRessource(RessourceType)}
-		state({Tail FarmerList} RessourceType PlayerIdsList TowerList)
+		if(FarmerList \= nil) then
+		   T = {Tail FarmerList} in
+		   {Send {Head FarmerList} getRessource(RessourceType)}
+		   {Browser.browse FarmerList#T}
+		   state(T RessourceType PlayerIdsList TowerList)
+		else State
+		end
 	     [] isRessource(IsRessource) then
 		if(RessourceType \= 0) then
 		   IsRessource = true
@@ -396,6 +428,7 @@ in
 	     [] isGoalComplete(?Bool) then
 		Bool = {IsGoal State}
 		State
+	     [] whichRessource(?TeamRessource) then TeamRessource = pool(Food Wood Stone Steel) State
 	     else {Browser.browse newTeamMsgerror} {Delay 5000} State
 	     end
 	  end
@@ -425,36 +458,46 @@ in
 	  proc{$ Msg} 
 	     case Msg
 	     of nextOrder then
-		Bag Position in
-		{Send Pid whichPosition(Position)}
-		{Send Pid whichBag(Bag)}
-		if {IsBagFull Bag} then
-		   Team HomePosition in
-		   {Send Pid whichTeam(Team)}
-		   {Send TEAMS.Team whichPosition(HomePosition)} 
-		   if(Position == HomePosition)
-		   then {Send Pid emptyBag}
-		   else {Send Pid goto(HomePosition)}
-		   end
-		else
-		   IsRessource
-		in
-		   {Send SquareBoard.(Position.x).(Position.y) isRessource(IsRessource)}
-		   if IsRessource == true then
-		      {Send Pid exploit}
+		Bag Position TeamRessource Team
+		FoodT WoodT StoneT SteelT
+	     in
+		{Send Pid whichTeam(Team brain)}
+		{Send TEAMS.Team whichRessource(TeamRessource)}
+		pool(FoodT WoodT StoneT SteelT) = TeamRessource
+	%	if(FoodT > 10 andthen ) then
+	%	elseif
+	%	   elseif
+	%	else
+		   {Send Pid whichPosition(Position)}
+		   {Send Pid whichBag(Bag)}
+		   if {IsBagFull Bag} then
+		      HomePosition in
+		      {Send TEAMS.Team whichPosition(HomePosition)} 
+		      if(Position == HomePosition)
+		      then {Send Pid emptyBag}
+		      else {Send Pid goto(HomePosition)}
+		      end
 		   else
-		      NearestRessource = {FindRessource Position}
+		      IsRessource
 		   in
-		      {Send Pid goto(NearestRessource)} 
+		      {Send SquareBoard.(Position.x).(Position.y) isRessource(IsRessource)}
+		      if IsRessource == true then
+			 {Send Pid exploit}
+		      else
+			 NearestRessource = {FindRessource Position}
+		      in
+			 {Send Pid goto(NearestRessource)} 
+		      end
 		   end
 		end
 	     end
-	  end
+	 % end
 	 }
 end
 
 proc{GameLauncher}
-   X in
+   {Browser.browse fiveSecToOption} {Delay 5000}
+   X Y Z A F H in
    for X in 1..HEIGHT do
       for Y in 1..WIDTH do
 	 if(X == 5 andthen Y == 5) then
@@ -467,8 +510,21 @@ proc{GameLauncher}
    end
   
    TEAMS.1 = thread {NewTeam position(x:1 y:1)} end
+   TEAMS.2 = thread {NewTeam position(x:10 y:1)} end
+   TEAMS.3 = thread {NewTeam position(x:10 y:10)} end
+   TEAMS.4 = thread {NewTeam position(x:1 y:10)} end
+   TEAMS.5 = thread {NewTeam position(x:3 y:5)} end
+   TEAMS.6 = thread {NewTeam position(x:12 y:12)} end
+   
    
    X = thread {NewPlayer 1} end
+   Y = thread {NewPlayer 2} end
+   Z = thread {NewPlayer 3} end
+   A = thread {NewPlayer 4} end
+   F = thread {NewPlayer 5} end
+   H = thread {NewPlayer 6} end
+   {Send H buyWeapon}
+   {Send Z buyWeapon}
 end
 
 /*******
@@ -487,7 +543,7 @@ proc{NewGraphicDisplayer ITag ?GDid}
 		 {ITag delete}
 		 {Delay Time}
 		 {SetBoxImage PlayerImage Position ITag}
-		 
+	      [] kill then {ITag delete}
 	      else {Browser.browse graphicDisplayer}
 	      end
 	   end
