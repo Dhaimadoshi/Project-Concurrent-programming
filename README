@@ -1,0 +1,6 @@
+nico@nico-M15x:~/Desktop/projet$ ./launch.sh 
+
+
+ozc -x -o nomOutPut nomProjet
+chmod 700 nomOutPut
+./nomOutPut
