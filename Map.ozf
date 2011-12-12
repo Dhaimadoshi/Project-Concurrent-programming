@@ -1,0 +1,19 @@
+functor
+export
+   getBoard:GetBoard
+define
+   fun{GetBoard}
+      Board
+   end
+   Board =
+   [
+    [0 0 0 0 0 0 0 0]
+    [0 0 0 0 0 0 0 0]
+    [0 0 0 0 0 0 0 0]
+    [0 0 0 0 0 0 0 0]
+    [0 0 0 0 0 0 0 0]
+    [0 0 0 0 0 0 0 0]
+    [0 0 0 0 0 0 0 0]
+    [0 0 0 0 0 0 0 0]
+   ]
+end

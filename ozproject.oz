@@ -34,14 +34,14 @@ define
    % Default Arguments
    NUMBER_OF_TEAMS = 6
    TEAMS = {MakeTuple homes NUMBER_OF_TEAMS}              % tuple qui contient les Ids des Teams
-   HEIGHT = 16
+   HEIGHT = 8
    WIDTH = HEIGHT
-   SQUARE_HEIGHT = 40
+   SQUARE_HEIGHT = 96
    SQUARE_WIDTH = SQUARE_HEIGHT
-   ADJUST = 80
+   ADJUST = SQUARE_HEIGHT*2
    ACTION_DELAY = 1000
    GOAL = goal(200 200 200 200)
-   RESSOURCE_SPOTS                        % contient ressourceSpot(Food Wood Stone Steel) >> Food > [Position Position ...] .... >> Position = position(x:X y:Y)
+   RESSOURCE_SPOTS                     % contient ressourceSpot(Food Wood Stone Steel) >> Food > [Position Position ...] .... >> Position = position(x:X y:Y)
 
    Args = {Application.getArgs
 	   record(
@@ -52,7 +52,17 @@ define
    SquareBoard = {MakeTuple squareBoard HEIGHT} for I in 1..HEIGHT do SquareBoard.I = {MakeTuple line WIDTH} end
    
    CD = {OS.getCWD}
-   PlayerImage = {QTk.newImage photo(file:CD#'/mario.gif')}
+   PlayerImage = {MakeTuple playerImage 8}
+   PlayerImage.1 = {QTk.newImage photo(file:CD#'/K1.gif')}
+   PlayerImage.2 = {QTk.newImage photo(file:CD#'/K2.gif')}
+   PlayerImage.3 = {QTk.newImage photo(file:CD#'/mario.gif')}
+   PlayerImage.4 = {QTk.newImage photo(file:CD#'/mario.gif')}
+   PlayerImage.5 = {QTk.newImage photo(file:CD#'/mario.gif')}
+   PlayerImage.6 = {QTk.newImage photo(file:CD#'/mario.gif')}
+   PlayerImage.7 = {QTk.newImage photo(file:CD#'/mario.gif')}
+   PlayerImage.8 = {QTk.newImage photo(file:CD#'/mario.gif')}
+   
+   BastonImage = {QTk.newImage photo(file:CD#'/baston.gif')}
    WoodImage = {QTk.newImage photo(file:CD#'/wood.gif')}
    
    /**
@@ -73,8 +83,8 @@ define
    Canvas
    
    Grid=canvas(handle:Canvas
-	       width: WIDTH*40 + ADJUST
-	       height: HEIGHT*40 + ADJUST
+	       width: WIDTH*SQUARE_HEIGHT + ADJUST
+	       height: HEIGHT*SQUARE_WIDTH + ADJUST
 	       glue:nswe
 	       bg:white)
    
@@ -169,9 +179,12 @@ fun{GetManathanDist Position}
 	 CondX = if X < 0 then X*~1 else X end
 	 CondY = if Y < 0 then Y*~1 else Y end
       
-	 Bool = (CondX + CondY) < 3 in
-	 if Bool then
-	    Square = SquareBoard.((Position.x)+X).((Position.y)+Y)
+	 IfManaThanRange = (CondX + CondY) < 3
+	 PosX = (Position.x)+X PosY = (Position.y)+Y
+	 InBoard = PosX > 0 andthen PosY > 0 andthen PosX < 9 andthen PosY < 9
+      in
+	 if IfManaThanRange andthen InBoard then
+	    Square = SquareBoard.PosX.PosY
 	    {Manathan X Y+1 Square|Res}
 	 else
 	    {Manathan X Y+1 Res}
@@ -185,7 +198,6 @@ end
 proc{SendToAllList List Msg}
    case List of H|T then
       {Send H Msg} {SendToAllList T Msg}
-      {Browser.browse msgSent#Msg}
    else skip  
    end
 end
@@ -206,26 +218,44 @@ proc{NewPlayer Team}
       end
    end
 
+   fun{ChooseInEnnemyPool EnemyHome}
+      fun{MuchNeeded EnemyPool AllyPool Amount Type}
+	 case AllyPool of H|RType|T then
+	    if H < Amount andthen EnemyPool.RType > 0 then {MuchNeeded EnemyPool T H RType}
+	    else {MuchNeeded EnemyPool T Amount Type}
+	    end
+	 else Type
+	 end
+      end
+      
+      EnemyPool AllyPool FormatAllyPool
+   in
+      {Send TEAMS.EnemyHome whichRessource(EnemyPool)}
+      {Send TEAMS.Team whichRessource(AllyPool)}
+      FormatAllyPool = [AllyPool.2 2 AllyPool.3 3 AllyPool.4 4]
+      {MuchNeeded EnemyPool FormatAllyPool AllyPool.1 1}
+   end
+
    Pid
-   Bid = {NewBrain Pid} 
+   Bid = thread {NewBrain Pid} end
    EMPTY_BAG = bag(0 0 0 0)
    STRENGHT_DEFAULT = 10            % 1 = no weapon, 3 = weapon equiped
    WEAPON = 2
    Tid = {Timer}
    ITag = {Canvas newTag($)}
    HomePosition 
-   GraphicDisplayer = {NewGraphicDisplayer ITag}
+   GraphicDisplayer = thread {NewGraphicDisplayer ITag} end
    DefaultState = state(wait HomePosition HomePosition EMPTY_BAG Team STRENGHT_DEFAULT)
 in
    {Send TEAMS.Team whichPosition(HomePosition)}
-   {Send GraphicDisplayer refresh(HomePosition)}
-  % {Delay ACTION_DELAY}
+   {Send GraphicDisplayer refresh(HomePosition Team)}
+  % {Delay ACTION_DELAY} 
    {Send Bid nextOrder}
    {Send SquareBoard.(HomePosition.x).(HomePosition.y) entering(Pid Team)}
   
    
    Pid = {NewStatePortObject DefaultState
-	  fun{$ State Msg} %  {Browser.browse player} {Browser.browse State} {Browser.browse Msg} {Delay 1000}
+	  fun{$ State Msg}
 	     S Position Destination Bag Team Strenght
 	  in
 	     state(S Position Destination Bag Team Strenght) = State
@@ -241,34 +271,34 @@ in
 		   {Send SquareBoard.(Position.x).(Position.y) leave(Pid Team Ack)}  % /!\ ACK à vérifier
 		   {Wait Ack}
 		   {Send SquareBoard.(NextPosition.x).(NextPosition.y) entering(Pid Team)}
-		   {Browser.browse move#Team}
 		   {Send Tid starttimer(ACTION_DELAY Pid)}
 		   state(move NextPosition Destination Bag Team Strenght)
 		end
 	     [] die then
 		{Delay ACTION_DELAY}
-		{Send GraphicDisplayer refresh(Position)}
-		{Send GraphicDisplayer kill}
+		{Send GraphicDisplayer refresh(Position Team)}
+		{Send GraphicDisplayer kill(Position)}
 		{Send TEAMS.Team deletePlayer}
-		{Browser.browse dead#Team#Position}
 		state(dead Position Destination Bag Team Strenght)
 	     [] exploit andthen S == wait then
-		{Browser.browse sentexploit#Team#S}
 		{Send SquareBoard.(Position.x).(Position.y) exploit(Pid Team)}
 		state(exploit Position Destination Bag Team Strenght)
-	     [] getRessource(RessourceType) andthen S == exploit then
-		NewBag = {AddInTuple Bag RessourceType bag}
+	     [] getRessource(RessourceType Home) andthen S == exploit then
+		RessourceGot NewBag
 	     in
-		{Send GraphicDisplayer refreshWithFlash(Position 250)}
+		if RessourceType == 5 then
+		   RessourceGot = {ChooseInEnnemyPool Home}
+		else RessourceGot = RessourceType
+		end
+		NewBag = {AddInTuple Bag RessourceGot bag}
+		{Send GraphicDisplayer refreshWithFlash(Position 250 Team)}
 		{Send Bid nextOrder}
-		{Browser.browse receiveRes#Team}
 		state(wait Position Destination NewBag Team Strenght)
 	     [] cancel andthen S == exploit then
-		{Browser.browse canceldid#Team}
 		{Send Bid nextOrder}
 		state(wait Position Destination Bag Team Strenght)
 	     [] builTower andthen S == wait then          % delay de la tour sera geré dans la case
-		{NewTower Team Position}
+		thread {NewTower Team Position} end
 		State
 	     [] buyWeapon andthen S == wait then state(wait Position Destination Bag Team (Strenght + WEAPON))
 	     [] emptyBag andthen S == wait then
@@ -276,8 +306,7 @@ in
 		{Send Bid nextOrder}
 		state(wait Position Destination EMPTY_BAG Team Strenght)		   
 	     [] stoptimer andthen S == wait orelse S == move then
-		{Send GraphicDisplayer refresh(Position)}
-		{Browser.browse Position#Team#graph}
+		{Send GraphicDisplayer refresh(Position Team)}
 		{Send Pid goto(Destination)}
 		State
 	     [] whichPosition(?PosisitionResult) then PosisitionResult = Position State
@@ -286,7 +315,7 @@ in
 	     [] whichTeam(?TeamResult)  then TeamResult = Team State
 	     [] whichStrenght(?StrenghtResult)  then StrenghtResult = Strenght State
 	     [] whichState(?StateResult) then StateResult = S State
-	     else {Browser.browse msgSentedTo#S#Msg} State
+	     else State
 	     end
 	  end
 	 }
@@ -392,7 +421,10 @@ proc{NewSquare RessourceTypeInitialiaser ?Sid}    % à l'issu combat : sent winn
    DefaultPlayerIdsList = nil
    DefaultTowerList = nil
    FarmerList = nil
-   DefaultState = state(FarmerList RessourceTypeInitialiaser DefaultPlayerIdsList DefaultTowerList)
+   DefaultHome = 0
+   DefaultState = state(FarmerList RessourceTypeInitialiaser DefaultPlayerIdsList DefaultTowerList DefaultHome)
+   ITag = {Canvas newTag($)}
+    GraphicDisplayer = thread {NewGraphicDisplayer ITag} end
    Tid = {Timer}
    
 in
@@ -400,56 +432,64 @@ in
    
    Sid = {NewStatePortObject
 	  DefaultState
-	  fun{$ State Msg}                                       %  {Browser.browse square} {Browser.browse State} {Browser.browse Msg} {Delay 1000}
-	     FarmerList RessourceType PlayerIdsList TowerList           % TowerList = tower(TowerId)
+	  fun{$ State Msg}
+	     FarmerList RessourceType PlayerIdsList TowerList Home           % TowerList = tower(TowerId)
 	  in
-	     state(FarmerList RessourceType PlayerIdsList TowerList) = State
+	     state(FarmerList RessourceType PlayerIdsList TowerList Home) = State
 	     case Msg
 	     of entering(Pid Team) then
 		if(TowerList == nil) then
-		   state(FarmerList RessourceType Pid|PlayerIdsList TowerList)
+		   state(FarmerList RessourceType Pid|PlayerIdsList TowerList Home)
 		else
 		   if {CheckTowerKill TowerList Pid Team} then State
-		   else state(FarmerList RessourceType Pid|PlayerIdsList TowerList)
+		   else state(FarmerList RessourceType Pid|PlayerIdsList TowerList Home)
 		   end
 		end
 	     [] leave(Pid Team ?Ack) then
 		NewPlayerIdsList = {ListFilter PlayerIdsList fun{$ Player} Player == Pid end}
 	     in
 		Ack = ok
-		state(FarmerList RessourceType NewPlayerIdsList TowerList)
+		state(FarmerList RessourceType NewPlayerIdsList TowerList Home)
 	     [] addTower(TowerId) then
-		state(FarmerList RessourceType PlayerIdsList TowerId|TowerList)
+		state(FarmerList RessourceType PlayerIdsList TowerId|TowerList Home)
 	     [] removeTower(TowerId) then
 		NewTowerList = {ListFilter TowerList fun{$ H} H == TowerId end}
 	     in
-		state(FarmerList RessourceType PlayerIdsList NewTowerList)
+		state(FarmerList RessourceType PlayerIdsList NewTowerList Home)
+	     [] setHome(Team) then state(FarmerList 5 PlayerIdsList TowerList Team)
 	     [] exploit(Pid Team) then
 		fun{StateWithNewFarmer}
 		   Fl in
 		   {Send Tid starttimer(ACTION_DELAY Sid)}          %team dans exploit
-		   {Browser.browse waitRes#Team}
 		   Fl = {AddList FarmerList Pid}
-		   state(Fl RessourceType PlayerIdsList TowerList)
+		   state(Fl RessourceType PlayerIdsList TowerList Home)
 		end
+		
 		fun{IsHomeDefended}
 		   if (RessourceType \= 5) then false
-		   else false
-		% which home
-		% isthereplayer?
+		   else
+		      Defence
+		   in
+		      Defence = {ListFilter PlayerIdsList fun{$ H} T in {Send H whichTeam(T)} T \= Home end}  % defence contient la liste
+		      if Defence == nil then false                                                            % des gens présents sur la home et qui appartiennent à la même faction
+		      else true
+		      end
 		   end
 		end
 		
-		{Browser.browse entrer#Team}
 		PlayersStatus
 	     in
 		{Send Pid whichState(PlayersStatus)}
-		if PlayersStatus == dead then {Browser.browse playerStatusInSquareIsUsefull#PlayersStatus} State
+		if PlayersStatus == dead then State
 		else
 		   if {IsHomeDefended} then
-		      Winners
+		      Winners Position
 		   in
+		      {Send Pid whichPosition(Position)}
+		      {Send GraphicDisplayer baston(Position)}
 		      Winners = {Fight PlayerIdsList}
+		      {SendToAllList Winners cancel}
+		      state(nil RessourceType Winners TowerList Home)
 		   elseif FarmerList == nil then
 		      {StateWithNewFarmer}
 		   else
@@ -463,24 +503,21 @@ in
 			 Winners
 		      in
 			 Winners = {Fight PlayerIdsList}
-			 
-			 {Browser.browse battleend#PlayerIdsList}
-
 			 {SendToAllList Winners cancel}
-			 state(nil RessourceType Winners TowerList)
+			 state(nil RessourceType Winners TowerList Home)
 		      end
 		   end
 		end
 	     [] stoptimer then
 		if(FarmerList \= nil) then
 		   T = {Head FarmerList} in
-		   {Send T getRessource(RessourceType)}
-		   {Browser.browse gerRess#T }
-		   state( {Tail FarmerList} RessourceType PlayerIdsList TowerList)
+		   {Send T getRessource(RessourceType Home)}
+		   state( {Tail FarmerList} RessourceType PlayerIdsList TowerList Home)
 		else State
 		end
-	     [] isRessource(IsRessource) then
-		if(RessourceType \= 0) then
+	     [] isRessource(?IsRessource ?WhichHome) then
+		WhichHome = Home
+		if(RessourceType \= 0) then 
 		   IsRessource = true
 		else
 		   IsRessource = false
@@ -492,7 +529,7 @@ in
 	 }
 end
 
-proc {NewTeam Location ?Tid}
+proc {NewTeam Location Team ?Tid}
 
    fun{IsGoal Pool}
       if (GOAL.1 < Pool.1) andthen
@@ -503,22 +540,30 @@ proc {NewTeam Location ?Tid}
 	 false
       end
    end
-   
+
    Default_Number_Players = 5
    Default_State = state(0 0 0 0 Default_Number_Players)         % state(food wood stone steel)
+   LocationX LocationY
 in
+   position(x:LocationX y:LocationY) = Location
    {SetBoxColor Location yellow}
+   {Send SquareBoard.(Location.x).(Location.y) setHome(Team)}
+   thread {NewTower Team position(x: LocationX+1 y: LocationY-1)} end
+   thread {NewTower Team position(x: LocationX-1 y: LocationY+1)} end
+
+   for I in 1..Default_Number_Players do
+      thread {NewPlayer Team} end
+   end
    
    Tid = {NewStatePortObject Default_State
-	  fun{$ State Msg}                                          % {Browser.browse team} {Browser.browse State} {Browser.browse Msg} {Delay 1000}
+	  fun{$ State Msg}                                        
 	     Food Wood Stone Steel NbPlayers
 	  in
 	     state(Food Wood Stone Steel NbPlayers) = State
 	     case Msg
-	     of addToPool(Bag) then
-		state((Food + Bag.1) (Wood + Bag.2) (Stone + Bag.3) (Steel + Bag.4) NbPlayers)
+	     of addToPool(Bag) then state((Food + Bag.1) (Wood + Bag.2) (Stone + Bag.3) (Steel + Bag.4) NbPlayers)
 	     [] creatPlayer(Team) then
-		{NewPlayer Team}
+		thread {NewPlayer Team} end
 		state(Food-10 Wood Stone Steel (NbPlayers + 1))
 	     [] deletePlayer then
 		state(Food Wood Stone Steel (NbPlayers - 1))
@@ -527,6 +572,8 @@ in
 		State
 	     [] whichPosition(?Position) then Position = Location State
 	     [] whichRessource(?TeamRessource) then TeamRessource = pool(Food Wood Stone Steel) State
+	     [] whichNumberPlayers(?NbrePlayers) then NbrePlayers = NbPlayers
+	     [] whichTeam(?T) then T = Team
 	     else {Browser.browse newTeamMsgerror} {Delay 5000} State
 	     end
 	  end
@@ -539,9 +586,11 @@ proc{NewTower Team Position}
    Range = {GetManathanDist Position}
    DefaultState = state(Life Team Range)
    ITag = {Canvas newTag($)}
-   GraphicDisplayer = {NewGraphicDisplayer ITag}
+   GraphicDisplayer = thread {NewGraphicDisplayer ITag} end
 in
+   {Browser.browse tower#Position#Range}
    {SendToAllList Range addTower(TowerId)}
+  
    {SetBoxColor Position red}
    TowerId = {NewStatePortObject DefaultState
 	      fun{$ State Msg}
@@ -576,15 +625,107 @@ end
 **/
 
 proc{NewBrain Pid ?Bid}
-  
+   
    fun{IsBagFull Bag}
       Bag.1 + Bag.2 + Bag.3 + Bag.4 == 10
    end
 
-   fun{FindRessource Position Team}
-      position(x:5 y:5)                   % doit choisir quel ressource prendre et renvoyer l'endroit de la plus proche source
+  
+%Position est la position actuelle du Player
+%DestinationPlace est la coordonée se trouvant le plus proche du joueur en question et qui fournit la ressource recherchée (elle est initialisée à [0 0] lors du premier appel
+%Acc est un accumulateur pour le calcul de la plus proche distance
+%Res n'est qu'une variable intermédiaire
+   
+   fun{ShortCutCalculation Position RessourcePlace DestinationPlace Acc} %RessourePlace = liste de tout les lieux(les coordonées des lieux) ou l'on trouve un type de ressource identique
+      DestX DestY
+   in
+      [DestX DestY] = DestinationPlace
+      case RessourcePlace of (P1|P2) then             %(le type de la ressource en question dépend de la fonction qui appelle celle-ci)
+	 case Position of position(x:X y:Y) then
+	    case P1 of P12|P13 then
+	       Res CoordX = P1.1 CoordY = P1.2.1 in
+	       if(CoordX>=X) andthen(CoordY>=Y)then Res=(CoordX-X)+(CoordY-Y)
+	       elseif (CoordX>=X)andthen (CoordY<Y)then Res = (CoordX-X)+(Y-CoordY)
+	       elseif (CoordX<X)andthen (CoordY>=Y)then Res = (X-CoordX)+(CoordY-Y)
+	       else Res = (X-CoordX)+(Y-CoordY)
+	       end
+	       if (Acc > Res)then {ShortCutCalculation Position P2 [CoordX CoordY] Res} 
+	       else {ShortCutCalculation Position P2 DestinationPlace Acc} 
+	       end
+	    else
+	       position(x: DestX y: DestY)
+	    end
+	 else position(x: DestX y: DestY)
+	 end
+      else position(x: DestX y: DestY)
+      end
    end
-
+   
+%SquareListRessource est la liste de toute les cases correspondant à toute les ressource possible  . elle s'écrit sous la forme -> ressource(food : [[1 2][4 4][3 6]] wood : [[1 5][6 2] [1 1]] stone : [[1 5][6 2] [1 1]] steel : [[1 5][6 2] [1 1]])
+%Position est la position du Player
+%Team est le numéro de la team en question
+%AssignementPlayerList est un tuple composé de 4 champs qui représente le nombre de personne de la team qui sont assigné à chaque ressource (dans l'ordre : food wood stone steel)
+%RessourceTeam est un tuple qui dit combien d'unité de chaque bien posséde la team 
+%DestinationPlace est initialisé à [0 0] avant d'être modifié par la fonction ShortCutCalcutation et va contenir l'endroit le plus proche de la ressource désirée
+%WinnerLevelUnit est le niveau d'unité nécessaire de chaque ressource pour remporter la partie
+%MinPeopleAssign est le nombre minimun de personne qui doive être assigné à l'exploitation d'une ressource 
+   
+   
+   
+   fun{FindNearestRessourceNeeded Team Position AssignementPlayerList SquareListRessource}
+   %Test permet de savoir à quel ressource on regarde et Iter permet de voir si on a déjà regarder à toute les ressources (si il vaut 4) et donc indique que l'on doit forcer l'exploitation
+      fun{FindRessource Team Position AssignementPlayerList SquareListRessource Test Iter} %Count 
+   %pour avoir RessourceTeam il faut envoyer {Send TEAMS.team whichRessource(RessourceTeam)}
+	 RessourceTeam = pool(150 20 45 10) NbreRess = 4 Acc=200 DestinationPlace=[0 0] SquareListRessoure Choice WinnerLevelUnit = 300 MinPeopleAssign = 5
+      in
+	 case RessourceTeam of pool(Food Wood Stone Steel)
+	 then
+	    case SquareListRessource of ressourceSpots(F W STO STE)then
+	       case AssignementPlayerList of player(N1 N2 N3 N4)then
+		  if Test==0 then
+		     if (Iter == NbreRess)then                                            %Si on a parcouru toute les ressources
+			{ShortCutCalculation Position F DestinationPlace Acc}
+		     elseif (Food > WinnerLevelUnit)orelse (AssignementPlayerList.1)>= MinPeopleAssign then
+			{FindRessource Team Position AssignementPlayerList SquareListRessource Test+1 Iter+1}
+		     else
+			{ShortCutCalculation Position F DestinationPlace Acc}
+		     end
+		  elseif Test==1 then
+		     if (Iter == NbreRess)then
+			{ShortCutCalculation Position W DestinationPlace Acc}
+		     elseif (Wood > WinnerLevelUnit) orelse (AssignementPlayerList.2)>= MinPeopleAssign then
+			{FindRessource Team Position AssignementPlayerList SquareListRessource Test+1 Iter+1}
+		     else {ShortCutCalculation Position W DestinationPlace Acc}
+		     end
+		  elseif Test==2 then
+		     if (Iter == NbreRess)then
+			{ShortCutCalculation Position STO DestinationPlace Acc}
+		     elseif (Stone > WinnerLevelUnit) orelse  AssignementPlayerList.3>= MinPeopleAssign then
+			{FindRessource Team Position AssignementPlayerList SquareListRessource Test+1 Iter+1}
+		     else
+			{ShortCutCalculation Position STO DestinationPlace Acc}
+		     end
+		  elseif Test==3 then
+		     if (Iter == NbreRess)then
+			{ShortCutCalculation Position STE DestinationPlace Acc}
+		     elseif (Steel> WinnerLevelUnit) orelse  AssignementPlayerList.4>= MinPeopleAssign then
+			{FindRessource Team Position AssignementPlayerList SquareListRessource Test+1 Iter+1}
+		     else
+			{ShortCutCalculation Position STE DestinationPlace Acc}
+		     end
+		  else {Browser.browse erreurfunctionFindRessource1}{Delay 10000} nil
+		  end
+	       else {Browser.browse erreurfunctionFindRessource2}{Delay 10000} nil
+	       end
+	    else {Browser.browse erreurfunctionFindRessource3}{Delay 10000} nil
+	    end
+	 else {Browser.browse erreurfunctionFindRessource4}{Delay 10000} nil
+	 end
+      end
+   in
+      {FindRessource Team Position AssignementPlayerList SquareListRessource ({OS.rand} mod 4) 0}
+   end
+  
    proc{GetRessourceOrder}
       Bag Position TeamRessource Team
    in
@@ -593,7 +734,6 @@ proc{NewBrain Pid ?Bid}
       {Send Pid whichBag(Bag)}
       if {IsBagFull Bag} then
 	 HomePosition in
-	 	 {Browser.browse Team}
 	 {Send TEAMS.Team whichPosition(HomePosition)}
 
 	 if(Position == HomePosition)
@@ -601,13 +741,14 @@ proc{NewBrain Pid ?Bid}
 	 else {Send Pid goto(HomePosition)}
 	 end
       else
-	 IsRessource
+	 IsRessource WhichHome
       in
-	 {Send SquareBoard.(Position.x).(Position.y) isRessource(IsRessource)}
-	 if IsRessource == true then
+	 {Send SquareBoard.(Position.x).(Position.y) isRessource(IsRessource WhichHome)}
+	 if IsRessource \= 0 andthen WhichHome \= Team then
 	    {Send Pid exploit}
 	 else
-	    NearestRessource = {FindRessource Position Team}           % tu as acces aux ressource de l'équipe via {Send TEAMS.Team whichRessource(unbound Var)}
+	    
+	    NearestRessource = {FindNearestRessourceNeeded Team Position player(0 0 0 0) RESSOURCE_SPOTS}           % tu as acces aux ressource de l'équipe via {Send TEAMS.Team whichRessource(unbound Var)}
 	 in
 	    {Send Pid goto(NearestRessource)} 
 	 end
@@ -621,10 +762,7 @@ in
 		% est ce que ej vais faire une tour ? si oui ou ?
 		% est qu'on va crée un nouveau joueur ?
 		% est ce que vais acheter une arme?
-		if(false) skip
-		else
 		{GetRessourceOrder}
-		end
 	     end
 	  end
 	 % end
@@ -632,7 +770,9 @@ in
 end
 
 proc{GameLauncher}
-
+   {Browser.browse seting}{Delay 4000}
+   {DrawSquareGrid HEIGHT WIDTH}
+   {MapInitialiser}
 % Creat SquareBoard
 %
 % Creat Teams
@@ -641,8 +781,7 @@ proc{GameLauncher}
 %
 
 
-
- %  {Browser.browse fiveSecToOption} {Delay 5000}
+/**
    X Y Z A F H in
    for X in 1..HEIGHT do
       for Y in 1..WIDTH do
@@ -657,26 +796,27 @@ proc{GameLauncher}
 
    {NewTower 1 position(x: 6 y: 7)}
   
-   TEAMS.1 = thread {NewTeam position(x:1 y:1)} end
+   TEAMS.1 = thread {NewTeam position(x:1 y:1) 1} end
    thread {NewPlayer 1} end
-   TEAMS.2 = thread {NewTeam position(x:10 y:1)} end
+   TEAMS.2 = thread {NewTeam position(x:10 y:1) 2} end
    thread {NewPlayer 2} end
    if Args.numberOfTeam >= 3 then
-      TEAMS.3 = thread {NewTeam position(x:10 y:10)} end
+      TEAMS.3 = thread {NewTeam position(x:10 y:10) 3} end
       thread {NewPlayer 3} end
    end	
    if Args.numberOfTeam >= 4 then
-      TEAMS.4 = thread {NewTeam position(x:1 y:10)} end
+      TEAMS.4 = thread {NewTeam position(x:1 y:10) 4} end
       thread {NewPlayer 4} end
    end
    if Args.numberOfTeam >= 5 then
-      TEAMS.5 = thread {NewTeam position(x:3 y:5)} end
+      TEAMS.5 = thread {NewTeam position(x:3 y:5) 5} end
       thread {NewPlayer 5} end
    end
    if Args.numberOfTeam >= 6 then   
-      TEAMS.6 = thread {NewTeam position(x:12 y:12)} end
+      TEAMS.6 = thread {NewTeam position(x:12 y:12) 6} end
       thread {NewPlayer 6} end	
    end
+   */
 end
 
 /*******
@@ -688,32 +828,33 @@ proc{NewGraphicDisplayer ITag ?GDid}
    GDid = {NewPortObject
 	   proc{$ Msg}
 	      case Msg
-	      of refresh(Position) then
+	      of refresh(Position Team) then
 		 {ITag delete}
-		 {SetBoxImage PlayerImage Position ITag}
-	      [] refreshWithFlash(Position Time) then
+		 {SetBoxImage PlayerImage.Team Position ITag}
+	      [] refreshWithFlash(Position Time Team) then
 		 {ITag delete}
 		 {Delay Time}
-		 {SetBoxImage PlayerImage Position ITag}
+		 {SetBoxImage PlayerImage.Team Position ITag}
 	      [] destroy(Position) then
 		 {Delay ACTION_DELAY}
 		 {SetBoxColor Position white}
-	      [] kill then
+	      [] kill(Position) then
+		 {SetBoxImage BastonImage Position ITag}
 		 {Delay ACTION_DELAY div 2}
 		 {ITag delete}
-	      else {Browser.browse graphicDisplayer}
+	      else {Browser.browse graphicDisplayerError}
 	      end
 	   end
 	  }
 end
 
 proc {DrawSquare X Y}
-   {Canvas tk(create rectangle X*40 Y*40 X*40+40 Y*40+40 fill:white outline:black)}
+   {Canvas tk(create rectangle X*SQUARE_HEIGHT Y*SQUARE_HEIGHT X*SQUARE_HEIGHT+SQUARE_HEIGHT Y*SQUARE_HEIGHT+SQUARE_HEIGHT fill:white outline:black)}
 end
 
-proc {DrawSquareGrid Size}
-   for X in 1..Size do
-      for Y in 1..Size do	 
+proc {DrawSquareGrid Height Width}
+   for X in 1..Height do
+      for Y in 1..Width do	 
 	 {DrawSquare X Y}
       end
    end
@@ -721,8 +862,8 @@ end
 
 
 proc {SetBoxImage I Position ITag}
-   AdjustmentX = 20
-   AdjustmentY = 20
+   AdjustmentX = SQUARE_HEIGHT div 2
+   AdjustmentY = SQUARE_HEIGHT div 2
    PixelsPositionX PixelsPositionY
 in
    PixelsPositionX = (Position.x) * SQUARE_WIDTH + AdjustmentX
@@ -734,7 +875,7 @@ proc {ITagDeleter ITag}
 end
 
 proc {SetBoxColor Position Color}
-   {Canvas tk(create rectangle Position.x*40 Position.y*40 Position.x*40+40 Position.y*40+40 fill:Color outline:black)}
+   {Canvas tk(create rectangle Position.x*SQUARE_HEIGHT Position.y*SQUARE_HEIGHT Position.x*SQUARE_HEIGHT+SQUARE_HEIGHT Position.y*SQUARE_HEIGHT+SQUARE_HEIGHT fill:Color outline:black)}
 end
 
 % game menu
@@ -752,10 +893,108 @@ GameMenu=menu(command(
 Toolbar=lr(	glue:nwe
 		menubutton(text:"Game" menu:GameMenu glue:w width:10))
 
+
+
+
+
+
+
+
+
+
+
+
+proc{MapInitialiser}
+   proc{CreatTeams Teams}
+      case Teams of team(T Position)|Tail then
+	 thread TEAMS.T = {NewTeam Position T} end
+	 {CreatTeams Tail}
+      else skip
+      end
+   end
+   
+   fun{InitialiseSquare Type X Y RessSpots TeamPositions TP}
+      NewRessSpots = {MakeTuple ressourceSpots 4}
+   in
+      case Type
+      of team(T) then
+	 thread SquareBoard.X.Y = {NewSquare 0} end
+	 TP = team(T position(x:X y:Y))|TeamPositions
+	 RessSpots
+      [] ressource(R) then
+	 thread SquareBoard.X.Y = {NewSquare R} end
+	 for I in 1..4 do
+	    if I == R then
+	       NewRessSpots.I = [X Y]|RessSpots.I
+	    else NewRessSpots.I = RessSpots.I
+	    end
+	 end
+	 TP = TeamPositions
+	 NewRessSpots
+      else
+	 thread SquareBoard.X.Y = {NewSquare 0} end
+	 TP = TeamPositions
+	 RessSpots
+      end
+   end
+   
+   fun{Initialise X Y RessSpots TeamPositions}
+      NewRessSpots TP
+   in
+      
+      if HEIGHT >= X then
+	 if WIDTH >= Y then
+	    NewRessSpots = {InitialiseSquare Map.X.Y X Y RessSpots TeamPositions TP}
+	    {Initialise X+1 Y NewRessSpots TP}
+	 else
+	    RESSOURCE_SPOTS = RessSpots
+	    TeamPositions
+	 end
+      else {Initialise 1 Y+1 RessSpots TeamPositions}
+      end
+   end
+   
+   A = team(1) B = team(2)
+   F = ressource(1) W = ressource(2) S = ressource(3)  I = ressource(4)
+   RessSpots = ressourceSpots(nil nil nil nil)
+   TeamsInfo
+   Map = map(
+	    line(S 0 0 0 0 0 0 0)
+	    line(0 A 0 0 0 0 0 0)
+	    line(0 0 0 0 0 W 0 0)
+	    line(0 0 0 0 0 0 0 0)
+	    line(0 0 0 0 0 0 0 0)
+	    line(0 0 F 0 0 0 0 0)
+	    line(0 0 0 0 0 0 B 0)
+	    line(0 0 0 0 0 0 0 I)    
+	    )
+in
+   TeamsInfo = {Initialise 1 1 RessSpots nil}
+   {CreatTeams TeamsInfo}
+end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
    % App window
 Window={QTk.build td(Toolbar Grid ScoreBoard)}
 							
-{DrawSquareGrid 16}							
+							
    % Display the window
 
 {Window show}
